@@ -1551,19 +1551,19 @@ export default function POS2Billing({ role, userName }: TerminalProps) {
                 <Receipt className="w-5 h-5" />
                 Billing Panel
               </button>
+              <button
+                onClick={() => selectTab("orders")}
+                className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer ${
+                  activeTab === "orders"
+                    ? "bg-[#FFFFFF] text-[var(--brand-primary)] shadow-lg scale-102"
+                    : "text-white font-bold hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                <History className="w-5 h-5" />
+                Order History
+              </button>
               {role === 'admin' && (
                 <>
-                  <button
-                    onClick={() => selectTab("orders")}
-                    className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer ${
-                      activeTab === "orders"
-                        ? "bg-[#FFFFFF] text-[var(--brand-primary)] shadow-lg scale-102"
-                        : "text-white font-bold hover:bg-white/10 hover:text-white"
-                    }`}
-                  >
-                    <History className="w-5 h-5" />
-                    Order History
-                  </button>
                   <button
                     onClick={() => selectTab("analytics")}
                     className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer ${
@@ -2352,7 +2352,7 @@ export default function POS2Billing({ role, userName }: TerminalProps) {
           </div>
         )}
 
-        {role === "admin" && activeTab === "orders" && (
+        {activeTab === "orders" && (
           <div className="flex-1 flex flex-col max-w-[1400px] mx-auto w-full pb-8 pr-2 animate-in fade-in duration-300">
             {/* Header Panel */}
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
@@ -2600,6 +2600,8 @@ export default function POS2Billing({ role, userName }: TerminalProps) {
                                     </svg>
                                     Invoice
                                   </button>
+                                  {/* Deleting invoices is admin-only (also enforced on the server). */}
+                                  {role === "admin" && (
                                   <button
                                     onClick={() =>
                                       setConfirmDialog({
@@ -2619,6 +2621,7 @@ export default function POS2Billing({ role, userName }: TerminalProps) {
                                     )}
                                     Delete
                                   </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
