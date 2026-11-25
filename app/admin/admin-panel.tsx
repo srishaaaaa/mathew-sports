@@ -507,7 +507,7 @@ function Staff({ branches }: { branches: BranchOverview[] }) {
 
       <div className="grid xl:grid-cols-2 gap-6">
         <AddAccount branches={branches} onCreated={load} />
-        <Card title="Change passwords" subtitle="Takes effect immediately — that account is signed out everywhere.">
+        <Card title="Change passcodes" subtitle="Takes effect immediately — that person is signed out everywhere.">
           <ul className="divide-y divide-black/5">
             {(accounts ?? []).map((a) => (
               <PasswordRow key={a.id} a={a} branch={branchOf(a.branch)} />
@@ -562,13 +562,13 @@ function RosterRow({ a, isMe, branch, onChanged }: { a: Account; isMe: boolean; 
       <Avatar a={a} branch={branch} />
       <div className="min-w-0">
         <p className="flex items-center gap-2 font-bold text-sm">
-          {a.id}
+          {a.display_name || a.id}
           <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${a.role === "admin" ? "bg-black text-white" : "bg-black/5 text-black/60"}`}>
             {a.role}
           </span>
           {isMe && <span className="text-[10px] font-semibold text-black/40">(you)</span>}
         </p>
-        <p className="text-xs text-black/45 font-medium truncate">{a.display_name || "—"}</p>
+        <p className="text-xs text-black/45 font-medium truncate">Signs in with passcode · {a.id}</p>
         {error && <p className="text-xs text-red-600 font-semibold mt-0.5">{error}</p>}
       </div>
       <div className="ml-auto text-right">
@@ -608,7 +608,7 @@ function PasswordInput({ value, onChange, placeholder }: { value: string; onChan
         autoComplete="new-password"
         className="w-full h-10 pl-3.5 pr-10 rounded-xl bg-[var(--a-tint)]/60 border border-black/10 text-sm font-semibold placeholder:text-black/35 placeholder:font-medium outline-none focus:border-[var(--a)] focus:bg-white transition-colors"
       />
-      <button type="button" onClick={() => setShow((s) => !s)} className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-md flex items-center justify-center text-black/40 hover:text-black cursor-pointer" aria-label={show ? "Hide password" : "Show password"}>
+      <button type="button" onClick={() => setShow((s) => !s)} className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-md flex items-center justify-center text-black/40 hover:text-black cursor-pointer" aria-label={show ? "Hide passcode" : "Show passcode"}>
         {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
       </button>
     </div>
@@ -639,13 +639,13 @@ function PasswordRow({ a, branch }: { a: Account; branch?: BranchOverview }) {
       <div className="flex items-center gap-3">
         <Avatar a={a} branch={branch} />
         <div className="w-28 shrink-0 min-w-0">
-          <p className="text-sm font-bold truncate">{a.id}</p>
+          <p className="text-sm font-bold truncate">{a.display_name || a.id}</p>
           <p className="text-[10px] font-semibold text-black/40 truncate">{branch ? branch.shopName : "Admin"}</p>
         </div>
-        <PasswordInput value={pw} onChange={(v) => { setPw(v); setError(""); }} placeholder="New password" />
+        <PasswordInput value={pw} onChange={(v) => { setPw(v); setError(""); }} placeholder="New passcode" />
         <button
           onClick={save}
-          disabled={pw.length < 6 || state === "saving"}
+          disabled={pw.length < 4 || state === "saving"}
           className="h-10 w-20 shrink-0 rounded-xl bg-[var(--a)] text-[var(--a-on)] text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-35 transition-opacity cursor-pointer disabled:cursor-not-allowed"
         >
           {state === "saving" ? <Loader2 className="w-4 h-4 animate-spin" /> : state === "saved" ? <><Check className="w-4 h-4" /> Saved</> : <><KeyRound className="w-3.5 h-3.5" /> Save</>}
@@ -659,7 +659,6 @@ function PasswordRow({ a, branch }: { a: Account; branch?: BranchOverview }) {
 function AddAccount({ branches, onCreated }: { branches: BranchOverview[]; onCreated: () => void }) {
   const [role, setRole] = useState<Role>("staff");
   const [branch, setBranch] = useState<BranchId>("pos1");
-  const [id, setId] = useState("");
   const [name, setName] = useState("");
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
@@ -669,11 +668,10 @@ function AddAccount({ branches, onCreated }: { branches: BranchOverview[]; onCre
     e.preventDefault();
     setBusy(true);
     setMsg(null);
-    const r = await createAccountAction({ id, displayName: name, role, branch: role === "staff" ? branch : null, password: pw });
+    const r = await createAccountAction({ displayName: name, role, branch: role === "staff" ? branch : null, password: pw });
     setBusy(false);
     if (r.ok) {
-      setMsg({ ok: true, text: `Account “${id.trim().toLowerCase()}” created.` });
-      setId("");
+      setMsg({ ok: true, text: `${name.trim()} can now sign in with that passcode.` });
       setName("");
       setPw("");
       onCreated();
@@ -683,7 +681,7 @@ function AddAccount({ branches, onCreated }: { branches: BranchOverview[]; onCre
   const field = "w-full h-10 px-3.5 rounded-xl bg-[var(--a-tint)]/60 border border-black/10 text-sm font-semibold placeholder:text-black/35 placeholder:font-medium outline-none focus:border-[var(--a)] focus:bg-white transition-colors";
 
   return (
-    <Card title="Add account" subtitle="Staff can only open the branch you assign them to." icon={<UserPlus className="w-4 h-4" />}>
+    <Card title="Add account" subtitle="Staff sign in with just their passcode, and only to the branch you pick." icon={<UserPlus className="w-4 h-4" />}>
       <form onSubmit={submit} className="p-5 sm:p-6 space-y-4">
         <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-black/[0.04]">
           {(["staff", "admin"] as const).map((r) => (
@@ -716,11 +714,8 @@ function AddAccount({ branches, onCreated }: { branches: BranchOverview[]; onCre
           </div>
         )}
 
-        <div className="grid sm:grid-cols-2 gap-3">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className={field} />
-          <input value={id} onChange={(e) => setId(e.target.value)} placeholder="Login ID (e.g. ms-anu)" autoCapitalize="none" spellCheck={false} className={field} />
-        </div>
-        <PasswordInput value={pw} onChange={setPw} placeholder="Password (min. 6 characters)" />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className={field} />
+        <PasswordInput value={pw} onChange={setPw} placeholder="Passcode (min. 4 characters)" />
 
         {msg && (
           <p className={`text-xs font-semibold px-3 py-2 rounded-lg ${msg.ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{msg.text}</p>
@@ -728,7 +723,7 @@ function AddAccount({ branches, onCreated }: { branches: BranchOverview[]; onCre
 
         <button
           type="submit"
-          disabled={busy || !id.trim() || pw.length < 6}
+          disabled={busy || !name.trim() || pw.length < 4}
           className="w-full h-11 rounded-xl bg-[var(--a)] text-[var(--a-on)] text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40 transition-opacity cursor-pointer disabled:cursor-not-allowed"
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}

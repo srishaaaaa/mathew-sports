@@ -5,6 +5,8 @@ import { requireAdmin } from "@/lib/session";
 import {
   createAccount,
   deleteAccount,
+  freeIdFrom,
+  passcodeInUse,
   listAccounts,
   normalizeId,
   setPassword,
@@ -116,7 +118,6 @@ export async function listAccountsAction(): Promise<{ me: string; accounts: Acco
 }
 
 export async function createAccountAction(input: {
-  id: string;
   displayName: string;
   role: Role;
   branch: BranchId | null;
@@ -125,11 +126,18 @@ export async function createAccountAction(input: {
   await requireAdmin();
   const pwError = validatePassword(input.password);
   if (pwError) return { ok: false, error: pwError };
+  if (!input.displayName.trim()) return { ok: false, error: "Enter a name." };
   if (input.role === "staff" && input.branch !== "pos1" && input.branch !== "pos2") {
     return { ok: false, error: "Choose the branch this staff member works at." };
   }
+  const branch = input.role === "staff" ? input.branch : null;
+  // Login is by passcode alone, so it must be unique within the branch (or among admins).
+  if (await passcodeInUse(input.role, branch, input.password)) {
+    return { ok: false, error: "Someone else already uses that passcode here. Choose a different one." };
+  }
   try {
-    await createAccount({ id: input.id, display_name: input.displayName, role: input.role, branch: input.branch, password: input.password });
+    const id = await freeIdFrom(input.displayName, input.role === "admin" ? "admin" : "staff");
+    await createAccount({ id, display_name: input.displayName, role: input.role, branch, password: input.password });
     return { ok: true };
   } catch (e) {
     return fail(e);
@@ -140,6 +148,11 @@ export async function changePasswordAction(id: string, password: string): Promis
   await requireAdmin();
   const pwError = validatePassword(password);
   if (pwError) return { ok: false, error: pwError };
+  const acc = (await listAccounts()).find((a) => a.id === normalizeId(id));
+  if (!acc) return { ok: false, error: "Account not found." };
+  if (await passcodeInUse(acc.role, acc.branch, password, acc.id)) {
+    return { ok: false, error: "Someone else already uses that passcode here. Choose a different one." };
+  }
   try {
     await setPassword(id, password);
     return { ok: true };

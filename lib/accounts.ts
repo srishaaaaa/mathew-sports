@@ -38,9 +38,51 @@ async function verifyPassword(password: string, stored: string): Promise<boolean
 export const normalizeId = (id: string) => id.trim().toLowerCase();
 
 export function validatePassword(password: string): string | null {
-  if (password.length < 6) return "Password must be at least 6 characters.";
-  if (password.length > 128) return "Password is too long.";
+  if (password.length < 4) return "Passcode must be at least 4 characters.";
+  if (password.length > 128) return "Passcode is too long.";
   return null;
+}
+
+/** Accounts a passcode can sign into: admins, or staff of one branch. */
+async function candidates(role: Role, branch: BranchId | null) {
+  let q = sb.from("pos_accounts").select(`${PUBLIC_COLS}, password_hash`).eq("role", role);
+  if (role === "staff") q = q.eq("branch", branch);
+  const { data, error } = await q.order("created_at");
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * Passcode-only login: the account (admin, or staff of `branch`) whose
+ * passcode matches. Passcodes are unique within that group, so at most one does.
+ */
+export async function findByPasscode(role: Role, branch: BranchId | null, passcode: string): Promise<Account | null> {
+  for (const row of await candidates(role, branch)) {
+    if (await verifyPassword(passcode, row.password_hash)) {
+      const { password_hash: _omit, ...account } = row;
+      void _omit;
+      return account as Account;
+    }
+  }
+  return null;
+}
+
+/** Is this passcode already used by another admin / another staff member of the branch? */
+export async function passcodeInUse(role: Role, branch: BranchId | null, passcode: string, exceptId?: string) {
+  for (const row of await candidates(role, branch)) {
+    if (row.id !== exceptId && (await verifyPassword(passcode, row.password_hash))) return true;
+  }
+  return false;
+}
+
+/** A free login ID derived from a display name, e.g. "Anu Mathew" → "anu-mathew". */
+export async function freeIdFrom(name: string, fallback: string): Promise<string> {
+  const base = (name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || fallback).padEnd(3, "x");
+  for (let n = 1; n < 100; n++) {
+    const id = n === 1 ? base : `${base}-${n}`;
+    if (!(await getAccount(id))) return id;
+  }
+  return `${base}-${Date.now().toString(36)}`;
 }
 
 // ── Queries ───────────────────────────────────────────────────────

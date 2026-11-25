@@ -7,9 +7,9 @@ Built with Next.js 16 App Router, React 19, TypeScript, Tailwind CSS v4 and Supa
 ## Getting started
 
 1. Install dependencies: `npm install`
-2. Copy `.env.example` to `.env` and fill in `SESSION_SECRET`, `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
+2. Copy `.env.example` to `.env` and fill in `SESSION_SECRET`, the Supabase URL and key, and the three passcodes (`ADMIN_PASSCODE`, `STAFF1_PASSCODE`, `STAFF2_PASSCODE`).
 3. Run `supabase/migrations/0001` → `0005` in order in the Supabase SQL editor.
-4. Create the first admin account (a row in `pos_accounts`), then manage every other account from the admin panel.
+4. Run `npm run accounts` to write the passcodes from `.env` into the database.
 5. `npm run dev` and open `/login`.
 
 ## Branches
@@ -28,14 +28,14 @@ The original logo files are in `brand/`. To rebuild a branch's app icons: `npm r
 
 ## Logins and the admin panel
 
-- **`/login`** has two tabs. **Staff POS Login**: pick the branch, then enter a staff ID and password. **Admin**: admin ID and password.
+- **`/login`** has two tabs, and there are no IDs. **Staff POS**: pick the branch, then enter its passcode. **Admin**: enter the admin passcode.
 - **Staff accounts** belong to one branch and can only open that branch's terminal.
 - **Admins** land on **`/admin`**:
   - a combined sales overview, with a branch filter
   - links into each POS
-  - **Staff & Memberships**: add or remove accounts and change passwords
-- **Accounts** are stored in `pos_accounts` with scrypt-hashed passwords.
-- **Sessions** are signed cookies (`SESSION_SECRET`). Changing a password signs that account out on every device.
+  - **Staff & Memberships**: add or remove people and change passcodes. Passcodes must be unique within a branch, so a passcode always identifies one person.
+- **Accounts** are stored in `pos_accounts` with scrypt-hashed passcodes. `npm run accounts` resets the three starter accounts to the passcodes in `.env`.
+- **Sessions** are signed cookies (`SESSION_SECRET`). Changing a passcode signs that person out on every device.
 - **Theme:** an admin picks each branch's colours in the terminal's **Settings**. The choice is stored in `branch_settings` and also applies to that branch's invoices.
 
 ## Scripts
@@ -43,6 +43,7 @@ The original logo files are in `brand/`. To rebuild a branch's app icons: `npm r
 - `npm run dev` / `npm run build` / `npm run start`
 - `npm run lint`
 - `npm run icons -- <image> <pos1|pos2>`
+- `npm run accounts`: write the `.env` passcodes into the database
 
 ## Agents & automation
 

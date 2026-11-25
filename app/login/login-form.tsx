@@ -10,7 +10,6 @@ import {
   Lock,
   ShieldCheck,
   Store,
-  UserRound,
 } from "lucide-react";
 import type { BranchId, ThemeColors } from "@/lib/branches/types";
 import { loginAction } from "./actions";
@@ -53,8 +52,7 @@ export default function LoginForm({
 }) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [branchId, setBranchId] = useState<BranchId>(initialBranch);
-  const [loginId, setLoginId] = useState("");
-  const [password, setPassword] = useState("");
+  const [passcode, setPasscode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -79,8 +77,8 @@ export default function LoginForm({
     try {
       const res = await loginAction(
         isAdmin
-          ? { mode: "admin", id: loginId, password }
-          : { mode: "staff", branch: branch.id, id: loginId, password },
+          ? { mode: "admin", passcode }
+          : { mode: "staff", branch: branch.id, passcode },
       );
       if (res.ok) {
         window.location.assign(res.redirect);
@@ -177,7 +175,7 @@ export default function LoginForm({
             <div className="relative z-10">
               <h3 className="text-2xl font-bold text-white mb-2">Welcome Back</h3>
               <p className="text-white/40 text-sm font-medium mb-7">
-                {isAdmin ? "Sign in with your admin ID to open the control centre." : "Choose your branch and sign in to access the terminal."}
+                {isAdmin ? "Enter the admin passcode to open the control centre." : "Choose your branch and enter its passcode to access the terminal."}
               </p>
 
               {/* Staff / Admin switch */}
@@ -190,6 +188,7 @@ export default function LoginForm({
                       type="button"
                       onClick={() => {
                         setMode(m);
+                        setPasscode("");
                         setError("");
                       }}
                       className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-[0.15em] transition-all duration-300 cursor-pointer ${
@@ -220,6 +219,7 @@ export default function LoginForm({
                             type="button"
                             onClick={() => {
                               setBranchId(b.id);
+                              setPasscode("");
                               setError("");
                             }}
                             className={`flex items-center gap-2.5 p-2.5 rounded-2xl border text-left transition-all duration-300 cursor-pointer ${
@@ -245,50 +245,26 @@ export default function LoginForm({
                   </div>
                 )}
 
-                {/* Login ID */}
+                {/* Passcode */}
                 <div className="space-y-3">
-                  <label htmlFor="login-id" className="block text-[10px] font-bold text-white/60 uppercase tracking-[0.2em] ml-1">
-                    {isAdmin ? "Admin ID" : "Staff ID"}
-                  </label>
-                  <div className="relative">
-                    <div className="absolute left-5 top-1/2 -translate-y-1/2 text-white/30">
-                      <UserRound className="w-5 h-5" />
-                    </div>
-                    <input
-                      id="login-id"
-                      value={loginId}
-                      onChange={(e) => {
-                        setLoginId(e.target.value);
-                        clearError();
-                      }}
-                      autoComplete="username"
-                      autoCapitalize="none"
-                      spellCheck={false}
-                      autoFocus
-                      placeholder={isAdmin ? "Enter admin ID" : "Enter staff ID"}
-                      className="w-full bg-black/40 border border-white/10 hover:border-white/20 focus:border-[var(--l-accent)] focus:bg-black/60 rounded-2xl pl-14 pr-5 py-4 text-white font-bold focus:outline-none transition-all placeholder:text-white/20 placeholder:font-medium"
-                    />
-                  </div>
-                </div>
-
-                {/* Password */}
-                <div className="space-y-3">
-                  <label htmlFor="login-password" className="block text-[10px] font-bold text-white/60 uppercase tracking-[0.2em] ml-1">
-                    Security Password
+                  <label htmlFor="login-passcode" className="block text-[10px] font-bold text-white/60 uppercase tracking-[0.2em] ml-1">
+                    {isAdmin ? "Admin Passcode" : `${branch.shopName} Passcode`}
                   </label>
                   <div className="relative">
                     <div className="absolute left-5 top-1/2 -translate-y-1/2 text-white/30">
                       <Lock className="w-5 h-5" />
                     </div>
                     <input
-                      id="login-password"
+                      id="login-passcode"
+                      name="pos-passcode"
                       type={showPassword ? "text" : "password"}
-                      value={password}
+                      value={passcode}
                       onChange={(e) => {
-                        setPassword(e.target.value);
+                        setPasscode(e.target.value);
                         clearError();
                       }}
-                      autoComplete="current-password"
+                      autoFocus
+                      autoComplete="off"
                       placeholder="••••••••"
                       className="w-full bg-black/40 border border-white/10 hover:border-white/20 focus:border-[var(--l-accent)] focus:bg-black/60 rounded-2xl pl-14 pr-14 py-4 text-white font-bold tracking-widest text-lg focus:outline-none transition-all placeholder:text-white/20"
                     />
@@ -296,7 +272,7 @@ export default function LoginForm({
                       type="button"
                       onClick={() => setShowPassword((v) => !v)}
                       className="absolute right-5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/80 transition-colors cursor-pointer"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-label={showPassword ? "Hide passcode" : "Show passcode"}
                     >
                       {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                     </button>
