@@ -53,7 +53,7 @@ The original logo files are in `brand/`. To rebuild a branch's app icons: `npm r
   - The **Advance Orders** tab: filter by period/status, mark ready, view details, print, send on WhatsApp, and **receive balance**. Receiving the balance takes an optional manual discount and any payment mode, including split.
   - Deposits are not revenue. Collecting the balance creates one normal invoice for the order. Only then does it count in analytics, including the per-mode cash/UPI/card totals.
   - Receipts: `/advance/<id>` and `/pos2/advance/<id>`, printable as A4, A5, or 58/80 mm thermal (`?format=`).
-  - Staff can book advance orders, mark them ready and collect balances. Only admins can cancel or delete.
+  - Staff can book advance orders, mark them ready, collect balances and cancel them. Only admins can delete.
 - **Analytics:** All bills / GST invoices / Non-GST bills filter, plus Cash, GPay/UPI, Split and Card received.
 - **Settings** (admin, per branch):
   - **Store details:** logo, owner's full name, shop name, phone, shop contact number, email, address, Instagram, location line. Stored in `branch_settings.profile`. Used by the terminal, invoices, receipts, WhatsApp messages, login and admin panel.

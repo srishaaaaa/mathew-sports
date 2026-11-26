@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, Plus, Printer, Send } from "lucide-react";
+import { Check, Eye, Plus, Printer, Send } from "lucide-react";
 import { modeLabel, type PaymentMode } from "@/lib/payments";
 
 export type GeneratedBill = {
@@ -31,6 +31,8 @@ export default function BillGeneratedModal({
   onView,
   onWhatsApp,
   onNewSale,
+  note,
+  newSaleLabel = "New sale",
 }: {
   bill: GeneratedBill;
   onPrint: () => void;
@@ -38,6 +40,9 @@ export default function BillGeneratedModal({
   /** Sends the invoice to this 10-digit number. */
   onWhatsApp: (phone: string) => void;
   onNewSale: () => void;
+  /** Extra line under the receipt (e.g. advance already paid). */
+  note?: string;
+  newSaleLabel?: string;
 }) {
   const [askPhone, setAskPhone] = useState(false);
   const [phone, setPhone] = useState(bill.customerPhone || "");
@@ -72,7 +77,7 @@ export default function BillGeneratedModal({
             <p className="mt-2 font-mono text-xs font-bold text-[var(--brand-primary-dark)]">#{bill.id}</p>
           </div>
           <button onClick={onNewSale} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-black text-white text-[11px] font-black uppercase tracking-wider cursor-pointer hover:bg-black/85">
-            <Plus className="w-4 h-4" /> New sale
+            {newSaleLabel === "New sale" ? <Plus className="w-4 h-4" /> : <Check className="w-4 h-4" />} {newSaleLabel}
           </button>
         </div>
 
@@ -97,6 +102,7 @@ export default function BillGeneratedModal({
             <span className="text-sm font-bold text-[#991B1B]">Balance Returned</span>
             <span className="text-2xl font-black text-[#991B1B]">{inr(balance)}</span>
           </div>
+          {note && <p className="mt-3 text-xs font-semibold text-black/55">{note}</p>}
         </div>
 
         {/* Actions */}
@@ -111,7 +117,7 @@ export default function BillGeneratedModal({
             <WhatsAppIcon /> WhatsApp invoice
           </button>
           <button onClick={onNewSale} className="h-11 rounded-xl bg-black hover:bg-black/85 text-white text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer">
-            <Plus className="w-4 h-4" /> New sale
+            {newSaleLabel === "New sale" ? <Plus className="w-4 h-4" /> : <Check className="w-4 h-4" />} {newSaleLabel}
           </button>
         </div>
 

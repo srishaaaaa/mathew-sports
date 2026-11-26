@@ -25,7 +25,8 @@ import {
   type AdvanceOrder,
   type AdvanceStatus,
 } from "@/lib/payments";
-import PaymentPicker, { initialPayState, payStateError, splitParts, type PayState } from "./payment-picker";
+import PaymentPicker, { initialPayState, payStateError, splitParts, splitTotal, type PayState } from "./payment-picker";
+import BillGeneratedModal from "@/app/_terminals/bill-generated-modal";
 import { PrintSettingsModal, fmtDate, inr, shareOnWhatsApp, type AdvanceActions, type AdvanceBranch } from "./shared";
 
 type Period = "all" | "today" | "week" | "month" | "year" | "custom";
@@ -303,13 +304,13 @@ export default function AdvanceOrdersPanel({
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
                         <IconBtn title="Send on WhatsApp" tone="bg-emerald-50 text-emerald-700" onClick={() => whatsapp(o)}><MessageCircle className="w-4 h-4" /></IconBtn>
-                        <IconBtn title={o.status === "COMPLETED" ? "Open final bill" : "Open advance receipt"} tone="bg-[var(--brand-tint)] text-[var(--brand-primary-dark)]" onClick={() => setPreview(o.id)}><FileText className="w-4 h-4" /></IconBtn>
+                        <IconBtn title={o.status === "COMPLETED" ? "Open final bill" : "Open advance receipt"} tone="bg-[var(--brand-tint)] text-[var(--brand-primary-dark)]" onClick={() => setPreview(`${branch.receiptBase}/${o.id}`)}><FileText className="w-4 h-4" /></IconBtn>
                         <IconBtn title="Print" tone="bg-black/5 text-black/70" onClick={() => setPrintUrl(`${branch.receiptBase}/${o.id}`)}><Printer className="w-4 h-4" /></IconBtn>
                         <IconBtn title="View details" tone="bg-black/5 text-black/70" onClick={() => setViewing(o)}><Eye className="w-4 h-4" /></IconBtn>
                         {isOpen && (
                           <IconBtn title="Receive balance" tone="bg-emerald-100 text-emerald-800" onClick={() => setCollecting(o)}><IndianRupee className="w-4 h-4" /></IconBtn>
                         )}
-                        {isOpen && role === "admin" && (
+                        {isOpen && (
                           <IconBtn
                             title="Cancel order"
                             tone="bg-amber-50 text-amber-700"
@@ -368,7 +369,9 @@ export default function AdvanceOrdersPanel({
             await reload();
             onInvoiceCreated();
           }}
-          onPrint={(id) => setPrintUrl(`${branch.receiptBase}/${id}`)}
+          branch={branch}
+          onPrintUrl={setPrintUrl}
+          onView={setPreview}
         />
       )}
       {printUrl && <PrintSettingsModal url={printUrl} onClose={() => setPrintUrl(null)} />}
@@ -377,13 +380,13 @@ export default function AdvanceOrdersPanel({
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[92vh] sm:h-[88vh] flex flex-col overflow-hidden border border-neutral-300" onClick={(e) => e.stopPropagation()}>
             <div className="px-4 py-2.5 flex justify-between items-center bg-neutral-900 text-white shrink-0">
               <h3 className="font-bold text-xs uppercase tracking-wider flex items-center gap-2">
-                <Printer className="w-3.5 h-3.5 text-neutral-300" /> Invoice preview • #{preview}
+                <Printer className="w-3.5 h-3.5 text-neutral-300" /> Invoice preview • #{preview.split("/").pop()}
               </h3>
               <div className="flex items-center gap-2">
-                <button onClick={() => setPrintUrl(`${branch.receiptBase}/${preview}`)} className="text-[11px] font-semibold text-neutral-300 hover:text-white px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded cursor-pointer">
+                <button onClick={() => setPrintUrl(preview)} className="text-[11px] font-semibold text-neutral-300 hover:text-white px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded cursor-pointer">
                   Print
                 </button>
-                <a href={`${branch.receiptBase}/${preview}`} target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold text-neutral-300 hover:text-white px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded">
+                <a href={preview} target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold text-neutral-300 hover:text-white px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded">
                   Open full page ↗
                 </a>
                 <button onClick={() => setPreview(null)} className="w-7 h-7 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded cursor-pointer" aria-label="Close preview">
@@ -391,7 +394,7 @@ export default function AdvanceOrdersPanel({
                 </button>
               </div>
             </div>
-            <iframe src={`${branch.receiptBase}/${preview}`} className="flex-1 w-full border-none bg-neutral-100" title={`Advance ${preview}`} />
+            <iframe src={preview} className="flex-1 w-full border-none bg-neutral-100" title={`Preview ${preview.split("/").pop()}`} />
           </div>
         </div>
       )}
@@ -578,20 +581,24 @@ function ReceiveBalanceModal({
   actions,
   onClose,
   onDone,
-  onPrint,
+  branch,
+  onPrintUrl,
+  onView,
 }: {
   order: AdvanceOrder;
   actions: AdvanceActions;
   onClose: () => void;
   onDone: () => Promise<void>;
-  onPrint: (id: string) => void;
+  branch: AdvanceBranch;
+  onPrintUrl: (url: string) => void;
+  onView: (url: string) => void;
 }) {
   const [dType, setDType] = useState<"FIXED" | "PERCENT">("FIXED");
   const [dValue, setDValue] = useState(0);
   const [pay, setPay] = useState<PayState>(initialPayState);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [done, setDone] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null); // invoice id once collected
 
   const due = balanceDue(o);
   const paidSoFar = o.payments.reduce((t, p) => t + p.amount, 0);
@@ -622,26 +629,47 @@ function ReceiveBalanceModal({
     }
   };
 
+  if (done) {
+    const invoiceUrl = `${branch.invoiceBase}/${done}`;
+    const received = pay.mode === "SPLIT" ? splitTotal(pay) : disc.payable;
+    const parts = pay.mode === "SPLIT" ? splitParts(pay, disc.payable) : null;
+    return (
+      <BillGeneratedModal
+        bill={{
+          id: done,
+          isGst: o.is_gst,
+          paymentMethod: pay.mode,
+          grandTotal: disc.payable,
+          amountReceived: received,
+          split: parts ? { cash: parts.CASH ?? 0, gpay: parts.GPAY ?? 0, card: parts.CARD ?? 0 } : undefined,
+          items: o.items.map((i) => ({ name: i.name, qty: i.qty, price: i.price })),
+          customerPhone: o.customer_phone,
+        }}
+        note={`Balance for advance order ${o.id}. Advance ${inr(o.deposit_amount)} paid earlier${disc.manualAmt > 0 ? `, discount ${inr(disc.manualAmt)}` : ""} · full order ${inr(o.deposit_amount + disc.payable)}.`}
+        onPrint={() => onPrintUrl(invoiceUrl)}
+        onView={() => onView(invoiceUrl)}
+        onWhatsApp={(phone) =>
+          shareOnWhatsApp(phone, [
+            `✨ *${branch.shopName}* ✨`,
+            "",
+            `Advance order *${o.id}* — paid in full. Thank you!`,
+            `Invoice: ${done}`,
+            `Total: ${inr(o.deposit_amount + disc.payable)} (advance ${inr(o.deposit_amount)} + balance ${inr(disc.payable)})`,
+            "",
+            `View invoice: ${window.location.origin}${invoiceUrl}`,
+          ])
+        }
+        onNewSale={onClose}
+        newSaleLabel="Done"
+      />
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[110] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={done ? onClose : undefined}>
       <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl p-6 space-y-4 max-h-[92vh] overflow-y-auto animate-in zoom-in-95 duration-150" onClick={(e) => e.stopPropagation()}>
-        <Header o={o} title={done ? "Balance received" : "Receive remaining payment"} onClose={onClose} />
-        {done ? (
-          <div className="space-y-4">
-            <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-4 text-sm">
-              <p className="flex items-center gap-2 font-black text-emerald-800"><CheckCircle2 className="w-5 h-5" /> Paid in full</p>
-              <p className="mt-1 text-emerald-900/80">
-                Collected {inr(disc.payable)}. Invoice <b>{done}</b> was created for the full order and now counts as revenue.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => onPrint(o.id)} className="h-11 rounded-xl border border-black/15 text-xs font-bold uppercase flex items-center justify-center gap-1.5 hover:bg-black/5 cursor-pointer">
-                <Printer className="w-4 h-4" /> Print final bill
-              </button>
-              <button onClick={onClose} className="h-11 rounded-xl bg-black text-white text-xs font-bold uppercase cursor-pointer">Done</button>
-            </div>
-          </div>
-        ) : (
+        <Header o={o} title="Receive remaining payment" onClose={onClose} />
+        {(
           <>
             <Customer o={o} />
             <Items o={o} />

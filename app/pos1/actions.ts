@@ -73,7 +73,7 @@ export async function saveThemeAction(themeId: string) {
 }
 
 // ── Advance orders (partial-payment holds) ────────────────────────
-// Staff can book, mark ready and collect balances; only admins cancel or delete.
+// Staff can book, mark ready, collect balances and cancel; only admins delete.
 export async function listAdvanceOrdersAction() {
   await requireStaff();
   return adv.listAdvanceOrders("pos1");
@@ -97,7 +97,7 @@ export async function finalizeAdvanceOrderAction(id: string, input: adv.Finalize
 }
 
 export async function cancelAdvanceOrderAction(id: string) {
-  await requireAdmin();
+  await requireStaff(); // as in IGMOLS: staff may cancel; only admins delete
   await adv.cancelAdvanceOrder("pos1", id);
 }
 
