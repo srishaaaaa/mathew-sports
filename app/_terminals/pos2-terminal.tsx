@@ -65,7 +65,6 @@ import PaymentPicker, { initialPayState, payStateError, splitParts, type PayStat
 import AdvanceOrdersPanel from "@/app/_terminals/advance/advance-orders-panel";
 import CreateAdvanceModal, { type AdvanceCart } from "@/app/_terminals/advance/create-advance-modal";
 import type { AdvanceActions } from "@/app/_terminals/advance/shared";
-import { COUPONS } from "@/lib/coupons";
 import { round2, type PaymentMode } from "@/lib/payments";
 
 // Settings → store details for this branch.
@@ -86,7 +85,8 @@ const ADVANCE_ACTIONS: AdvanceActions = {
 import { useBranchTheme } from "@/app/components/branch-theme";
 import SettingsModal, { type SettingsActions } from "@/app/_terminals/settings/settings-modal";
 import type { ShopProfile } from "@/lib/shop";
-import { Palette, LayoutDashboard, Clock as ClockIcon, Wallet } from "lucide-react";
+import { Palette, LayoutDashboard, Clock as ClockIcon, Wallet, Check as CheckIcon, Eye as EyeIcon } from "lucide-react";
+import OrderDetailsModal from "@/app/_terminals/order-details-modal";
 
 type CatalogItem = {
   id: string;
@@ -123,7 +123,6 @@ type CompletedOrder = {
   splitCash?: number;
   splitGpay?: number;
   splitCard?: number;
-  couponCode?: string | null;
   advanceOrderId?: string | null;
   date: string;
   status: "Completed" | "Pending";
@@ -370,6 +369,8 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
   // Split payment parts (used when paymentMethod === "SPLIT").
   const [splitPay, setSplitPay] = useState<PayState>(initialPayState);
   const [advanceCart, setAdvanceCart] = useState<AdvanceCart | null>(null);
+  // Order History → eye button
+  const [detailsOrder, setDetailsOrder] = useState<CompletedOrder | null>(null);
   const [advanceRefreshKey, setAdvanceRefreshKey] = useState(0);
   // Analytics: all bills, GST invoices only, or non-GST bills only.
   const [analyticsBillType, setAnalyticsBillType] = useState<"all" | "gst" | "nongst">("all");
@@ -396,11 +397,10 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
     new Date().toISOString().split("T")[0],
   );
   const [analyticsSubTab, setAnalyticsSubTab] = useState<
-    "revenue" | "today" | "products" | "coupons"
+    "revenue" | "today" | "products"
   >("revenue");
   const [analyticsSearchPhone, setAnalyticsSearchPhone] = useState("");
   const [productSearchQuery, setProductSearchQuery] = useState("");
-  const [couponSearchQuery, setCouponSearchQuery] = useState("");
 
   useEffect(() => {
     setIsMounted(true);
@@ -468,7 +468,6 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
             splitCash: o.split_cash ?? 0,
             splitGpay: o.split_gpay ?? 0,
             splitCard: o.split_card ?? 0,
-            couponCode: o.coupon_code ?? null,
             advanceOrderId: o.advance_order_id ?? null,
             date: o.created_at,
             status: (o.status === "COMPLETED" ? "Completed" : "Pending") as
@@ -552,46 +551,6 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
   const [historyEndDate, setHistoryEndDate] = useState<string>(
     new Date().toISOString().split("T")[0],
   );
-
-  const [selectedCoupon, setSelectedCoupon] = useState<string>("none");
-  const coupons = [
-    { code: "none", label: "No Coupon", type: "fixed", value: 0 },
-    ...COUPONS.map((c) => ({
-      code: c.code,
-      label: c.label,
-      type: c.type === "PERCENT" ? "percent" : "fixed",
-      value: c.value,
-    })),
-  ];
-
-  const handleCouponChange = (code: string) => {
-    setSelectedCoupon(code);
-    const coupon = coupons.find((c) => c.code === code);
-    if (coupon) {
-      setDiscountType(coupon.type as "fixed" | "percent");
-      setDiscountValue(coupon.value);
-    }
-  };
-
-  const getCouponCodeForOrder = (order: CompletedOrder) => {
-    if (order.discount === 0) return "NONE";
-    const matched = coupons.find((c) => {
-      if (c.code === "none") return false;
-      if (order.discountType && order.discountValue) {
-        const typeMatches =
-          c.type === (order.discountType === "PERCENT" ? "percent" : "fixed");
-        const valMatches = c.value === order.discountValue;
-        return typeMatches && valMatches;
-      }
-      if (c.type === "fixed") {
-        return c.value === order.discount;
-      } else {
-        const calculated = order.subtotal * (c.value / 100);
-        return Math.abs(calculated - order.discount) < 2;
-      }
-    });
-    return matched ? matched.code.toUpperCase() : "PROMO";
-  };
 
   const addItem = () => {
     setItems([
@@ -759,11 +718,10 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
       alert(`Split payment: ${splitError}`);
       return null;
     }
-    const split = paymentMethod === "SPLIT" ? splitParts(splitPay) : {};
+    const split = paymentMethod === "SPLIT" ? splitParts(splitPay, grandTotal) : {};
     const splitCash = paymentMethod === "SPLIT" ? round2(split.CASH ?? 0) : paymentMethod === "CASH" ? grandTotal : 0;
     const splitGpay = paymentMethod === "SPLIT" ? round2(split.GPAY ?? 0) : paymentMethod === "GPAY" ? grandTotal : 0;
     const splitCard = paymentMethod === "SPLIT" ? round2(split.CARD ?? 0) : paymentMethod === "CARD" ? grandTotal : 0;
-    const couponCode = selectedCoupon !== "none" ? selectedCoupon : null;
 
     const newOrderId = await generateOrderId();
     const itemsToSave = items;
@@ -803,7 +761,6 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
         split_cash: splitCash,
         split_gpay: splitGpay,
         split_card: splitCard,
-        coupon_code: couponCode,
         order_items: [
           ...itemsToSave.map((i) => ({
             snapshot_name: i.name,
@@ -859,7 +816,6 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
       splitCash,
       splitGpay,
       splitCard,
-      couponCode,
       date: createdAt,
       status: "Completed",
     };
@@ -877,7 +833,6 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
     setSplitPay(initialPayState());
     setApplyGST(false);
     setGstPercentage(5);
-    setSelectedCoupon("none");
 
     return snapshot;
   };
@@ -2222,24 +2177,6 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
 
                   {/* Discounts section */}
                   <div className="space-y-4 pt-1">
-                    {/* Coupon */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-[#000000] uppercase tracking-[0.1em] mb-1.5">
-                        Coupon
-                      </label>
-                      <select
-                        value={selectedCoupon}
-                        onChange={(e) => handleCouponChange(e.target.value)}
-                        className="w-full bg-white border border-black/10 text-[#000000] rounded-lg px-3 py-2 text-xs font-bold focus:outline-none focus:border-[var(--brand-primary)] cursor-pointer"
-                      >
-                        {coupons.map((c) => (
-                          <option key={c.code} value={c.code}>
-                            {c.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
                     {/* Manual Discount */}
                     <div>
                       <label className="block text-[10px] font-bold text-[#000000] uppercase tracking-[0.1em] mb-1.5">
@@ -2252,7 +2189,6 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
                             setDiscountType(
                               e.target.value as "fixed" | "percent",
                             );
-                            setSelectedCoupon("none");
                           }}
                           className="bg-white border border-black/10 text-[#000000] rounded-lg px-3 py-2 text-xs font-bold focus:outline-none focus:border-[var(--brand-primary)] cursor-pointer"
                         >
@@ -2266,7 +2202,6 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
                           onWheel={(e) => e.currentTarget.blur()}
                           onChange={(e) => {
                             setDiscountValue(parseFloat(e.target.value) || 0);
-                            setSelectedCoupon("none");
                           }}
                           placeholder="0"
                         />
@@ -2282,6 +2217,7 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
                             .filter((i) => i.name)
                             .reduce((sum, i) => sum + i.qty, 0)}{" "}
                           items)
+                          {applyGST && <span className="text-[9px] font-bold text-[var(--brand-primary-dark)] uppercase"> excl. GST</span>}
                         </span>
                         <span className="font-bold text-[#000000]">
                           ₹
@@ -2306,24 +2242,29 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
                       </div>
                     </div>
 
-                    {/* GST Section (Below Delivery, Above Grand Total) */}
-                    <div className="pt-2">
-                      <div className="flex flex-wrap justify-between items-center gap-2">
-                        <label className="flex items-center gap-3 cursor-pointer">
-                          <div className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${applyGST ? 'bg-[var(--brand-primary)]' : 'bg-[var(--brand-border)]'}`}>
-                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${applyGST ? 'translate-x-4' : 'translate-x-1'}`} />
-                          </div>
-                          <input
-                            type="checkbox"
-                            className="sr-only"
-                            checked={applyGST}
-                            onChange={(e) => setApplyGST(e.target.checked)}
-                          />
+                    {/* Bill type: Non-GST Bill / GST Invoice */}
+                    <div className="pt-2 space-y-2.5">
+                      <div className="flex items-center bg-[#FFFFFF] border border-black/10 rounded-full p-1 w-full">
+                        <button
+                          type="button"
+                          onClick={() => setApplyGST(false)}
+                          className={`flex-1 py-1.5 rounded-full text-[10px] font-bold tracking-wider uppercase transition-all cursor-pointer ${!applyGST ? "bg-[#111827] text-white shadow-sm" : "text-[#000000]"}`}
+                        >
+                          Non-GST Bill
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setApplyGST(true)}
+                          className={`flex-1 py-1.5 rounded-full text-[10px] font-bold tracking-wider uppercase transition-all cursor-pointer ${applyGST ? "bg-[var(--brand-primary)] text-[var(--brand-on-primary)] shadow-sm" : "text-[#000000]"}`}
+                        >
+                          GST Invoice
+                        </button>
+                      </div>
+                      {applyGST && (
+                        <div className="flex justify-between items-center">
                           <span className="text-xs font-bold text-[#000000] uppercase tracking-wider">
-                            Apply GST
+                            GST <span className="text-[9px] font-bold text-[var(--brand-primary-dark)]">(+ added)</span>
                           </span>
-                        </label>
-                        {applyGST && (
                           <div className="flex items-center gap-2">
                             <div className="flex items-center gap-1">
                               <input
@@ -2335,12 +2276,25 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
                               />
                               <span className="text-xs font-bold text-[#000000]">%</span>
                             </div>
-                            <span className="text-xs font-bold text-[var(--brand-primary)] w-16 text-right">
+                            <span className="text-xs font-bold text-[var(--brand-primary)] w-20 text-right">
                               ₹{gstAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </span>
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Financial Option — payment method */}
+                    <div className="pt-2">
+                      <PaymentPicker
+                        part="buttons"
+                        value={{ ...splitPay, mode: paymentMethod }}
+                        onChange={(p) => {
+                          setSplitPay(p);
+                          setPaymentMethod(p.mode);
+                        }}
+                        amount={grandTotal}
+                      />
                     </div>
 
                     {/* Grand Total */}
@@ -2356,65 +2310,49 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
                       </span>
                     </div>
 
-                    {/* Payment Method Selector (Cash / QR-GPay / Card / Split) */}
-                    <div className="mt-4">
+                    {/* Payment inputs — per selected method */}
+                    {paymentMethod === "SPLIT" ? (
                       <PaymentPicker
+                        part="split"
                         value={{ ...splitPay, mode: paymentMethod }}
                         onChange={(p) => {
                           setSplitPay(p);
                           setPaymentMethod(p.mode);
                         }}
                         amount={grandTotal}
-                        label="Payment method"
                       />
-                    </div>
+                    ) : (
+                      <div className="bg-[#FFFFFF]/40 border border-black/10 rounded-xl p-4 mt-2">
+                        <span className="block text-[9px] font-bold text-[#000000] uppercase tracking-wider mb-0.5">
+                          {paymentMethod === "GPAY" ? "QR / GPay" : paymentMethod === "CARD" ? "Card" : "Cash"} Payment
+                        </span>
+                        <label className="block text-[10px] font-bold text-[#000000] mb-2.5">
+                          {paymentMethod === "CASH" ? "Amount Received (₹)" : `${paymentMethod === "GPAY" ? "QR / GPay" : "Card"} Amount (₹)`}
+                        </label>
+                        <input
+                          type="number"
+                          className="w-full bg-white border border-black/10 focus:border-[var(--brand-primary)] rounded-lg px-3 py-2 text-base font-bold text-[#000000] placeholder:text-[#000000]/40 focus:outline-none transition-colors"
+                          value={cashReceived || ""}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          onChange={(e) => setCashReceived(parseFloat(e.target.value) || 0)}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    )}
 
-                    {paymentMethod === "CASH" && (
-                      <>
-                        <div className="bg-[#FFFFFF]/40 border border-black/10 rounded-xl p-4 mt-2">
-                          <div className="flex items-center justify-between mb-2.5">
-                            <label className="block text-[10px] font-bold text-[#000000]">
-                              Amount Received (₹)
-                            </label>
-                            <button
-                              onClick={() => setCashReceived(grandTotal)}
-                              className="text-[10px] font-bold text-[var(--brand-primary)] bg-[var(--brand-primary)]/10 px-2 py-1 rounded hover:bg-[var(--brand-primary)]/20 transition-colors"
-                            >
-                              Exact Amount
-                            </button>
-                          </div>
-                          <input
-                            type="number"
-                            className="w-full bg-white border border-black/10 focus:border-[var(--brand-primary)] rounded-lg px-3 py-2 text-base font-bold text-[#000000] placeholder:text-[#000000] focus:outline-none transition-colors"
-                            value={cashReceived || ""}
-                            onWheel={(e) => e.currentTarget.blur()}
-                            onChange={(e) =>
-                              setCashReceived(parseFloat(e.target.value) || 0)
-                            }
-                            placeholder="0.00"
-                          />
-                        </div>
-
-                        {/* Change Return */}
-                        {cashReceived > 0 && (
-                          <div className="flex justify-between items-center bg-white border border-black/10 rounded-lg p-3 text-xs mt-2">
-                            <span className="font-bold text-[#000000] uppercase tracking-[0.05em]">
-                              Change Return
-                            </span>
-                            <span
-                              className={`font-black text-sm ${cashReceived >= grandTotal ? "text-[#1A1A1A]" : "text-[var(--brand-primary)]"}`}
-                            >
-                              ₹
-                              {Math.max(
-                                0,
-                                cashReceived - grandTotal,
-                              ).toLocaleString(undefined, {
-                                minimumFractionDigits: 2,
-                              })}
-                            </span>
-                          </div>
-                        )}
-                      </>
+                    {/* Change Return — cash only */}
+                    {paymentMethod === "CASH" && cashReceived > 0 && (
+                      <div className="flex justify-between items-center bg-white border border-black/10 rounded-lg p-3 text-xs">
+                        <span className="font-bold text-[#000000] uppercase tracking-[0.05em]">
+                          Change Return
+                        </span>
+                        <span className={`font-black text-sm ${cashReceived >= grandTotal ? "text-[#00A86B]" : "text-[#27272A]"}`}>
+                          ₹
+                          {Math.max(0, cashReceived - grandTotal).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
                     )}
 
                     {/* Saved confirmation */}
@@ -2429,28 +2367,16 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
                     <button
                       onClick={handleCompleteSale}
                       disabled={isCompletingSale || isSavingOrder}
-                      className="w-full mt-2 bg-[var(--brand-primary)] hover:bg-[var(--brand-primary-dark)] text-[var(--brand-on-primary)] py-3.5 rounded-lg font-bold text-xs uppercase tracking-[0.1em] flex items-center justify-center gap-2 transition-transform active:scale-[0.98] shadow-[0_4px_14px_color-mix(in_srgb,var(--brand-primary)_35%,transparent)] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                      className="w-full mt-2 bg-[#10B981] hover:bg-[#059669] text-white py-3.5 rounded-lg font-black text-[11px] uppercase tracking-[0.1em] flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-[0_4px_14px_rgba(16,185,129,0.35)] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {isCompletingSale ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
-                        <Receipt className="w-4 h-4" />
+                        <CheckIcon className="w-4 h-4" />
                       )}
                       {isCompletingSale ? "Processing…" : "Complete Sale"}
                     </button>
 
-                    <button
-                      onClick={handleSaveOrder}
-                      disabled={isSavingOrder || isCompletingSale}
-                      className="w-full mt-2 bg-white hover:bg-[var(--brand-bg)] text-[#000000] border border-black/15 py-3 rounded-lg font-bold text-[10px] uppercase tracking-[0.1em] flex items-center justify-center gap-2 transition-transform active:scale-[0.98] shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {isSavingOrder ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Save className="w-3.5 h-3.5 text-[var(--brand-primary)]" />
-                      )}
-                      {isSavingOrder ? "Saving…" : "Save Order"}
-                    </button>
 
                     <button
                       onClick={() => {
@@ -2466,7 +2392,6 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
                           items: valid.map((i) => ({ name: i.name, desc: i.desc, price: i.price, qty: i.qty })),
                           discountType: discountType === "percent" ? "PERCENT" : "FIXED",
                           discountValue,
-                          couponCode: selectedCoupon !== "none" ? selectedCoupon : null,
                           isGst: applyGST,
                           gstPercentage,
                           deliveryFee,
@@ -2499,6 +2424,8 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
           />
         )}
 
+        {detailsOrder && <OrderDetailsModal order={detailsOrder} onClose={() => setDetailsOrder(null)} />}
+
         {advanceCart && (
           <CreateAdvanceModal
             cart={advanceCart}
@@ -2517,7 +2444,6 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
               setSplitPay(initialPayState());
               setApplyGST(false);
               setGstPercentage(5);
-              setSelectedCoupon("none");
             }}
           />
         )}
@@ -2706,6 +2632,9 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
                               Order ID
                             </th>
                             <th className="p-4 text-[10px] font-bold text-[#000000] uppercase tracking-widest">
+                              Date &amp; Time
+                            </th>
+                            <th className="p-4 text-[10px] font-bold text-[#000000] uppercase tracking-widest">
                               Customer Name
                             </th>
                             <th className="p-4 text-[10px] font-bold text-[#000000] uppercase tracking-widest">
@@ -2730,6 +2659,12 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
                             >
                               <td className="p-4 text-xs font-semibold text-[#000000]">
                                 {order.id}
+                              </td>
+                              <td className="p-4 text-xs font-bold text-[#000000] whitespace-nowrap">
+                                {new Date(order.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                                <span className="block text-[10px] font-semibold text-black/60">
+                                  {new Date(order.date).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                                </span>
                               </td>
                               <td className="p-4 text-xs font-bold text-[#000000]">
                                 {order.customerName}
@@ -2762,49 +2697,56 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
                                 ₹{order.grandTotal.toLocaleString()}
                               </td>
                               <td className="p-4 text-right">
-                                <div className="flex flex-row items-center justify-end gap-2 sm:gap-3">
-                                  <span className="px-3 py-1 rounded bg-[#10B981]/10 text-[#10B981] text-[10px] font-bold uppercase tracking-wider hidden sm:inline-block">
+                                <div className="flex flex-row items-center justify-end gap-1.5">
+                                  <span className="px-3 py-1 rounded bg-[#10B981]/10 text-[#10B981] text-[10px] font-bold uppercase tracking-wider hidden lg:inline-block mr-1">
                                     {order.status}
                                   </span>
                                   <button
                                     onClick={() => resendWhatsApp(order)}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#10B981] hover:bg-[#059669] text-white rounded-md text-[9px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap shrink-0"
+                                    title="Send on WhatsApp"
+                                    aria-label="Send on WhatsApp"
+                                    className="flex items-center justify-center w-8 h-8 bg-[#10B981]/10 hover:bg-[#10B981]/20 text-[#10B981] rounded-md transition-colors cursor-pointer"
                                   >
-                                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                                       <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.012c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z" />
                                     </svg>
-                                    WhatsApp
                                   </button>
                                   <button
                                     onClick={() => setActiveInvoiceId(order.id)}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--brand-primary)] hover:bg-[var(--brand-primary)] text-[var(--brand-on-primary)] rounded-md text-[9px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap cursor-pointer shrink-0"
+                                    title="View invoice"
+                                    aria-label="View invoice"
+                                    className="flex items-center justify-center w-8 h-8 bg-[var(--brand-primary)]/10 hover:bg-[var(--brand-primary)]/20 text-[var(--brand-primary-dark)] rounded-md transition-colors cursor-pointer"
                                   >
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                     </svg>
-                                    Invoice
+                                  </button>
+                                  <button
+                                    onClick={() => setDetailsOrder(order)}
+                                    title="Order details"
+                                    aria-label="Order details"
+                                    className="flex items-center justify-center w-8 h-8 bg-black/5 hover:bg-black/10 text-[#000000] rounded-md transition-colors cursor-pointer"
+                                  >
+                                    <EyeIcon className="w-4 h-4" />
                                   </button>
                                   {/* Deleting invoices is admin-only (also enforced on the server). */}
                                   {role === "admin" && (
-                                  <button
-                                    onClick={() =>
-                                      setConfirmDialog({
-                                        title: "Delete this invoice?",
-                                        message: `Invoice ${order.id} for ${order.customerName || "Guest"} (₹${order.grandTotal.toLocaleString()}) will be permanently deleted from the database and removed from every analytics report. This cannot be undone.`,
-                                        confirmLabel: "Delete invoice",
-                                        onConfirm: () => handleDeleteOrder(order.id),
-                                      })
-                                    }
-                                    disabled={deletingOrderId === order.id}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--brand-primary)]/40 text-[var(--brand-primary)] hover:bg-[var(--brand-primary)] hover:text-[var(--brand-on-primary)] rounded-md text-[9px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                                  >
-                                    {deletingOrderId === order.id ? (
-                                      <Loader2 className="w-3 h-3 animate-spin" />
-                                    ) : (
-                                      <Trash2 className="w-3 h-3" />
-                                    )}
-                                    Delete
-                                  </button>
+                                    <button
+                                      onClick={() =>
+                                        setConfirmDialog({
+                                          title: "Delete this invoice?",
+                                          message: `Invoice ${order.id} for ${order.customerName || "Guest"} (₹${order.grandTotal.toLocaleString()}) will be permanently deleted from the database and removed from every analytics report. This cannot be undone.`,
+                                          confirmLabel: "Delete invoice",
+                                          onConfirm: () => handleDeleteOrder(order.id),
+                                        })
+                                      }
+                                      disabled={deletingOrderId === order.id}
+                                      title="Delete invoice"
+                                      aria-label="Delete invoice"
+                                      className="flex items-center justify-center w-8 h-8 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      {deletingOrderId === order.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                    </button>
                                   )}
                                 </div>
                               </td>
@@ -2927,7 +2869,7 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
 
             {/* Sub Navigation Tabs */}
             <div className="flex border-b border-black/10 mb-6 gap-6 overflow-x-auto scrollbar-none pb-0.5 w-full shrink-0">
-              {(["revenue", "today", "products", "coupons"] as const).map(
+              {(["revenue", "today", "products"] as const).map(
                 (tab) => {
                   const isActive = analyticsSubTab === tab;
                   const displayLabel =
@@ -3757,174 +3699,6 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
               </div>
             )}
 
-            {analyticsSubTab === "coupons" && (
-              <div className="flex flex-col lg:grid lg:grid-cols-3 gap-6">
-                <div className="col-span-1 w-full bg-white border border-black/10 rounded-xl p-6 shadow-sm flex flex-col gap-6">
-                  <h3 className="font-bold text-[#000000] text-sm">
-                    Discount Summary
-                  </h3>
-
-                  <div className="p-4 bg-[#FFFFFF] border border-black/10 rounded-lg">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#000000]">
-                        Total Discounts Given
-                      </span>
-                      <Percent className="w-4 h-4 text-[var(--brand-primary)]" />
-                    </div>
-                    <span className="text-2xl font-black text-[var(--brand-primary)]">
-                      ₹
-                      {analyticsFilteredOrders
-                        .reduce((acc, o) => acc + o.discount, 0)
-                        .toLocaleString()}
-                    </span>
-                  </div>
-
-                  <div className="p-4 bg-[#FFFFFF] border border-black/10 rounded-lg">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#000000]">
-                        Discounted Orders
-                      </span>
-                      <Calendar className="w-4 h-4 text-[#1A1A1A]" />
-                    </div>
-                    <span className="text-2xl font-black text-[#000000]">
-                      {
-                        analyticsFilteredOrders.filter((o) => o.discount > 0)
-                          .length
-                      }
-                    </span>
-                  </div>
-
-                  <div className="p-4 bg-[#FFFFFF] border border-black/10 rounded-lg">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#000000]">
-                        Avg Discount Per Order
-                      </span>
-                      <IndianRupee className="w-4 h-4 text-[#1A1A1A]" />
-                    </div>
-                    <span className="text-2xl font-black text-[#000000]">
-                      ₹
-                      {Math.round(
-                        analyticsFilteredOrders.filter((o) => o.discount > 0)
-                          .length > 0
-                          ? analyticsFilteredOrders.reduce(
-                              (acc, o) => acc + o.discount,
-                              0,
-                            ) /
-                              analyticsFilteredOrders.filter(
-                                (o) => o.discount > 0,
-                              ).length
-                          : 0,
-                      ).toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="col-span-2 w-full bg-white border border-black/10 rounded-xl p-6 shadow-sm">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-                    <h3 className="font-bold text-[#000000] text-sm">
-                      Promo Campaign Performance
-                    </h3>
-
-                    {/* Coupons Search Input */}
-                    <div className="flex items-center border border-black/10 bg-[#FFFFFF] rounded-lg px-3 py-1.5 gap-2 shadow-xs w-full sm:w-auto animate-in fade-in duration-200">
-                      <Search className="w-3.5 h-3.5 text-[#000000]" />
-                      <input
-                        type="text"
-                        placeholder="Search code/mobile/amount..."
-                        className="text-xs font-semibold bg-transparent border-none outline-none focus:ring-0 text-[#000000] placeholder:text-[#000000]/50 w-full sm:w-[220px]"
-                        value={couponSearchQuery}
-                        onChange={(e) => setCouponSearchQuery(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  {analyticsFilteredOrders.filter((o) => o.discount > 0).length ===
-                  0 ? (
-                    <div className="text-center text-[#000000] text-sm font-semibold py-12">
-                      No promotional discounts given in this period.
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-[#FFFFFF] border-b border-black/10">
-                            <th className="p-3 text-[10px] font-bold text-[#000000] uppercase tracking-wider">
-                              Transaction ID
-                            </th>
-                            <th className="p-3 text-[10px] font-bold text-[#000000] uppercase tracking-wider">
-                              Customer Mobile
-                            </th>
-                            <th className="p-3 text-[10px] font-bold text-[#000000] uppercase tracking-wider text-right">
-                              Order Total
-                            </th>
-                            <th className="p-3 text-[10px] font-bold text-[#000000] uppercase tracking-wider text-right">
-                              Discount Applied
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {analyticsFilteredOrders
-                            .filter((o) => o.discount > 0)
-                            .filter((o) => {
-                              const q = couponSearchQuery.toLowerCase();
-                              const couponCode = getCouponCodeForOrder(o).toLowerCase();
-                              return (
-                                o.id.toLowerCase().includes(q) ||
-                                couponCode.includes(q) ||
-                                (o.customerPhone || "").includes(q) ||
-                                o.discount.toString().includes(q) ||
-                                o.grandTotal.toString().includes(q)
-                              );
-                            }).length === 0 ? (
-                            <tr>
-                              <td
-                                colSpan={4}
-                                className="text-center py-12 text-sm font-semibold text-[#000000]"
-                              >
-                                No matching coupon performance records found.
-                              </td>
-                            </tr>
-                          ) : (
-                            analyticsFilteredOrders
-                              .filter((o) => o.discount > 0)
-                              .filter((o) => {
-                                const q = couponSearchQuery.toLowerCase();
-                                const couponCode = getCouponCodeForOrder(o).toLowerCase();
-                                return (
-                                  o.id.toLowerCase().includes(q) ||
-                                  couponCode.includes(q) ||
-                                  (o.customerPhone || "").includes(q) ||
-                                  o.discount.toString().includes(q) ||
-                                  o.grandTotal.toString().includes(q)
-                                );
-                              })
-                              .map((order) => (
-                                <tr
-                                  key={order.id}
-                                  className="border-b border-transparent hover:bg-[#FFFFFF]/50 transition-colors"
-                                >
-                                  <td className="p-3 text-xs font-semibold text-[#000000]">
-                                    {order.id}
-                                  </td>
-                                  <td className="p-3 text-xs font-mono font-bold text-[#000000]">
-                                    {order.customerPhone || "-"}
-                                  </td>
-                                  <td className="p-3 text-xs font-bold text-right text-[#000000]">
-                                    ₹{order.grandTotal.toLocaleString()}
-                                  </td>
-                                  <td className="p-3 text-xs font-black text-[var(--brand-primary)] text-right">
-                                    -₹{order.discount.toLocaleString()}
-                                  </td>
-                                </tr>
-                              ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         )}
 

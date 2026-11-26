@@ -35,7 +35,7 @@ export default function AdvanceReceipt({
   const cancelled = o.status === "CANCELLED";
   const title = completed ? "Advance Order Bill" : cancelled ? "Cancelled Advance Order" : "Advance Receipt";
   const paid = sumPayments(o.payments);
-  const balDiscounts = o.payments.reduce((t, p) => t + p.manual_discount + p.coupon_discount, 0);
+  const balDiscounts = o.payments.reduce((t, p) => t + p.manual_discount, 0);
   const due = completed || cancelled ? 0 : balanceDue(o);
   const g = cgstSgst(o.gst_percentage, o.gst_amount);
   const thermal = format.startsWith("thermal");
@@ -43,7 +43,7 @@ export default function AdvanceReceipt({
   const totals: [string, string][] = [
     ["Subtotal", inr(o.subtotal)],
     ...(o.discount_amount > 0
-      ? [[o.coupon_code ? `Coupon ${o.coupon_code}` : `Discount${o.discount_type === "PERCENT" ? ` (${o.discount_value}%)` : ""}`, `− ${inr(o.discount_amount)}`] as [string, string]]
+      ? [[`Discount${o.discount_type === "PERCENT" ? ` (${o.discount_value}%)` : ""}`, `− ${inr(o.discount_amount)}`] as [string, string]]
       : []),
     ...(o.is_gst
       ? ([
@@ -58,7 +58,6 @@ export default function AdvanceReceipt({
     const rows: [string, string, string?][] = [];
     if (p.kind === "BALANCE") {
       if (p.manual_discount > 0) rows.push(["Discount at collection", `− ${inr(p.manual_discount)}`]);
-      if (p.coupon_discount > 0) rows.push([`Coupon ${p.coupon_code}`, `− ${inr(p.coupon_discount)}`]);
     }
     const parts = [p.cash && `Cash ${inr(p.cash)}`, p.gpay && `UPI ${inr(p.gpay)}`, p.card && `Card ${inr(p.card)}`].filter(Boolean).join(" + ");
     rows.push([

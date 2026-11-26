@@ -15,7 +15,6 @@ import {
   RefreshCw,
   Search,
   Trash2,
-  Wallet,
   X,
 } from "lucide-react";
 import {
@@ -26,7 +25,6 @@ import {
   type AdvanceOrder,
   type AdvanceStatus,
 } from "@/lib/payments";
-import { COUPONS, findCoupon } from "@/lib/coupons";
 import PaymentPicker, { initialPayState, payStateError, splitParts, type PayState } from "./payment-picker";
 import { PrintSettingsModal, fmtDate, inr, shareOnWhatsApp, type AdvanceActions, type AdvanceBranch } from "./shared";
 
@@ -68,6 +66,7 @@ export default function AdvanceOrdersPanel({
   const [viewing, setViewing] = useState<AdvanceOrder | null>(null);
   const [collecting, setCollecting] = useState<AdvanceOrder | null>(null);
   const [printUrl, setPrintUrl] = useState<string | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ title: string; body: string; label: string; run: () => Promise<void> } | null>(null);
 
@@ -127,7 +126,6 @@ export default function AdvanceOrdersPanel({
   const open = inRange.filter((o) => o.status === "PENDING" || o.status === "READY");
   const stats = {
     outstanding: open.reduce((t, o) => t + balanceDue(o), 0),
-    held: open.reduce((t, o) => t + o.deposit_amount, 0),
     ready: inRange.filter((o) => o.status === "READY").length,
     completed: inRange.filter((o) => o.status === "COMPLETED").length,
   };
@@ -204,11 +202,10 @@ export default function AdvanceOrdersPanel({
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Stat label="Outstanding balance" value={inr(stats.outstanding)} note={`${open.length} open order${open.length === 1 ? "" : "s"}`} icon={<IndianRupee className="w-4 h-4" />} tone="bg-red-50 text-red-600" />
-        <Stat label="Deposits held" value={inr(stats.held)} note="Collected, not yet revenue" icon={<Wallet className="w-4 h-4" />} tone="bg-amber-50 text-amber-600" />
-        <Stat label="Ready for collection" value={String(stats.ready)} note="Waiting for the customer" icon={<Package className="w-4 h-4" />} tone="bg-sky-50 text-sky-600" />
-        <Stat label="Completed" value={String(stats.completed)} note="Paid in full → invoiced" icon={<CheckCircle2 className="w-4 h-4" />} tone="bg-emerald-50 text-emerald-600" />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <Stat label="Outstanding balance" value={inr(stats.outstanding)} icon={<IndianRupee className="w-5 h-5 text-[#DC2626]" />} tone="bg-[#FEE2E2]" />
+        <Stat label="Ready for collection" value={String(stats.ready)} icon={<Package className="w-5 h-5 text-[#2563EB]" />} tone="bg-[#DBEAFE]" />
+        <Stat label="Completed deposits" value={String(stats.completed)} icon={<CheckCircle2 className="w-5 h-5 text-[#16A34A]" />} tone="bg-[#DCFCE7]" />
       </div>
 
       {/* Search + status */}
@@ -306,7 +303,7 @@ export default function AdvanceOrdersPanel({
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
                         <IconBtn title="Send on WhatsApp" tone="bg-emerald-50 text-emerald-700" onClick={() => whatsapp(o)}><MessageCircle className="w-4 h-4" /></IconBtn>
-                        <IconBtn title={o.status === "COMPLETED" ? "Open final bill" : "Open advance receipt"} tone="bg-[var(--brand-tint)] text-[var(--brand-primary-dark)]" onClick={() => window.open(`${branch.receiptBase}/${o.id}`, "_blank")}><FileText className="w-4 h-4" /></IconBtn>
+                        <IconBtn title={o.status === "COMPLETED" ? "Open final bill" : "Open advance receipt"} tone="bg-[var(--brand-tint)] text-[var(--brand-primary-dark)]" onClick={() => setPreview(o.id)}><FileText className="w-4 h-4" /></IconBtn>
                         <IconBtn title="Print" tone="bg-black/5 text-black/70" onClick={() => setPrintUrl(`${branch.receiptBase}/${o.id}`)}><Printer className="w-4 h-4" /></IconBtn>
                         <IconBtn title="View details" tone="bg-black/5 text-black/70" onClick={() => setViewing(o)}><Eye className="w-4 h-4" /></IconBtn>
                         {isOpen && (
@@ -375,6 +372,29 @@ export default function AdvanceOrdersPanel({
         />
       )}
       {printUrl && <PrintSettingsModal url={printUrl} onClose={() => setPrintUrl(null)} />}
+      {preview && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[400] flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150" onClick={() => setPreview(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[92vh] sm:h-[88vh] flex flex-col overflow-hidden border border-neutral-300" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 py-2.5 flex justify-between items-center bg-neutral-900 text-white shrink-0">
+              <h3 className="font-bold text-xs uppercase tracking-wider flex items-center gap-2">
+                <Printer className="w-3.5 h-3.5 text-neutral-300" /> Invoice preview • #{preview}
+              </h3>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setPrintUrl(`${branch.receiptBase}/${preview}`)} className="text-[11px] font-semibold text-neutral-300 hover:text-white px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded cursor-pointer">
+                  Print
+                </button>
+                <a href={`${branch.receiptBase}/${preview}`} target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold text-neutral-300 hover:text-white px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded">
+                  Open full page ↗
+                </a>
+                <button onClick={() => setPreview(null)} className="w-7 h-7 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded cursor-pointer" aria-label="Close preview">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <iframe src={`${branch.receiptBase}/${preview}`} className="flex-1 w-full border-none bg-neutral-100" title={`Advance ${preview}`} />
+          </div>
+        </div>
+      )}
       {confirm && (
         <div className="fixed inset-0 z-[130] bg-black/50 flex items-center justify-center p-4" onClick={() => setConfirm(null)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
@@ -400,15 +420,14 @@ export default function AdvanceOrdersPanel({
   );
 }
 
-function Stat({ label, value, note, icon, tone }: { label: string; value: string; note: string; icon: React.ReactNode; tone: string }) {
+function Stat({ label, value, icon, tone }: { label: string; value: string; icon: React.ReactNode; tone: string }) {
   return (
-    <div className="bg-white border border-black/10 rounded-2xl p-4 shadow-sm">
-      <div className="flex justify-between items-start">
-        <span className="text-[10px] font-black uppercase tracking-wider text-[var(--brand-primary-dark)]">{label}</span>
-        <span className={`w-8 h-8 rounded-xl flex items-center justify-center ${tone}`}>{icon}</span>
+    <div className="bg-white border border-black/10 rounded-xl p-4 shadow-sm flex justify-between items-center">
+      <div>
+        <p className="text-[10px] font-bold text-[var(--brand-primary-dark)] uppercase tracking-wider">{label}</p>
+        <p className="text-xl font-black text-black tabular-nums">{value}</p>
       </div>
-      <p className="mt-2 text-2xl font-black tabular-nums">{value}</p>
-      <p className="text-[10px] font-semibold text-black/50">{note}</p>
+      <span className={`w-10 h-10 rounded-lg flex items-center justify-center ${tone}`}>{icon}</span>
     </div>
   );
 }
@@ -427,7 +446,7 @@ function Totals({ o }: { o: AdvanceOrder }) {
     <div className="rounded-xl border border-black/10 p-3 text-xs space-y-1">
       <Line k="Subtotal" v={inr(o.subtotal)} />
       {o.discount_amount > 0 && (
-        <Line k={o.coupon_code ? `Coupon ${o.coupon_code}` : `Discount${o.discount_type === "PERCENT" ? ` (${o.discount_value}%)` : ""}`} v={`− ${inr(o.discount_amount)}`} />
+        <Line k={`Discount${o.discount_type === "PERCENT" ? ` (${o.discount_value}%)` : ""}`} v={`− ${inr(o.discount_amount)}`} />
       )}
       {o.is_gst && (
         <>
@@ -531,7 +550,6 @@ function DetailsModal({ order: o, onClose, onPrint, onShare }: { order: AdvanceO
               <p className="text-[10px] text-black/45">
                 {new Date(p.at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
                 {p.manual_discount > 0 && ` · manual discount ${inr(p.manual_discount)}`}
-                {p.coupon_discount > 0 && ` · coupon ${p.coupon_code} ${inr(p.coupon_discount)}`}
               </p>
             </div>
           ))}
@@ -570,7 +588,6 @@ function ReceiveBalanceModal({
 }) {
   const [dType, setDType] = useState<"FIXED" | "PERCENT">("FIXED");
   const [dValue, setDValue] = useState(0);
-  const [coupon, setCoupon] = useState("");
   const [pay, setPay] = useState<PayState>(initialPayState);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -578,7 +595,7 @@ function ReceiveBalanceModal({
 
   const due = balanceDue(o);
   const paidSoFar = o.payments.reduce((t, p) => t + p.amount, 0);
-  const disc = balanceDiscount(due, { type: dType, value: dValue }, findCoupon(coupon));
+  const disc = balanceDiscount(due, { type: dType, value: dValue });
   const payError = payStateError(pay, disc.payable);
 
   // keep a split in step with the amount due
@@ -593,8 +610,7 @@ function ReceiveBalanceModal({
     try {
       const r = await actions.finalize(o.id, {
         manual: { type: dType, value: dValue },
-        couponCode: coupon || null,
-        payment: { mode: pay.mode, split: pay.mode === "SPLIT" ? splitParts(pay) : undefined },
+        payment: { mode: pay.mode, split: pay.mode === "SPLIT" ? splitParts(pay, disc.payable) : undefined },
       });
       setDone(r.orderId);
       await onDone();
@@ -632,7 +648,7 @@ function ReceiveBalanceModal({
             <Triple total={o.total_amount} paid={paidSoFar} balance={due} />
             {o.delivery_date && <p className="flex items-center gap-1.5 text-xs font-bold text-[var(--brand-primary-dark)]"><Clock className="w-3.5 h-3.5" /> Delivery: {fmtDate(o.delivery_date)}</p>}
 
-            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-black/5">
+            <div className="pt-2 border-t border-black/5">
               <div>
                 <span className="block text-[10px] font-bold uppercase tracking-wider text-black/70 mb-1.5">Manual discount</span>
                 <div className="flex gap-1.5">
@@ -640,7 +656,7 @@ function ReceiveBalanceModal({
                     value={dType}
                     onChange={(e) => {
                       setDType(e.target.value as "FIXED" | "PERCENT");
-                      syncSplit(balanceDiscount(due, { type: e.target.value as "FIXED" | "PERCENT", value: dValue }, findCoupon(coupon)).payable);
+                      syncSplit(balanceDiscount(due, { type: e.target.value as "FIXED" | "PERCENT", value: dValue }).payable);
                     }}
                     className="h-10 px-2 rounded-lg border border-black/10 text-xs font-bold cursor-pointer"
                   >
@@ -655,39 +671,21 @@ function ReceiveBalanceModal({
                     onChange={(e) => {
                       const v = Math.max(0, parseFloat(e.target.value) || 0);
                       setDValue(v);
-                      syncSplit(balanceDiscount(due, { type: dType, value: v }, findCoupon(coupon)).payable);
+                      syncSplit(balanceDiscount(due, { type: dType, value: v }).payable);
                     }}
                     placeholder="0"
                     className="flex-1 min-w-0 h-10 px-3 rounded-lg border border-black/10 text-sm font-bold text-right outline-none focus:border-[var(--brand-primary)]"
                   />
                 </div>
               </div>
-              <div>
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-black/70 mb-1.5">Coupon</span>
-                <select
-                  value={coupon}
-                  onChange={(e) => {
-                    setCoupon(e.target.value);
-                    syncSplit(balanceDiscount(due, { type: dType, value: dValue }, findCoupon(e.target.value)).payable);
-                  }}
-                  className="w-full h-10 px-2 rounded-lg border border-black/10 text-xs font-bold cursor-pointer"
-                >
-                  <option value="">No coupon</option>
-                  {COUPONS.map((c) => (
-                    <option key={c.code} value={c.code}>{c.label}</option>
-                  ))}
-                </select>
-              </div>
             </div>
 
             <PaymentPicker value={pay} onChange={setPay} amount={disc.payable} label="Payment method" />
 
             <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-4 text-center">
-              {(disc.manualAmt > 0 || disc.couponAmt > 0) && (
+              {disc.manualAmt > 0 && (
                 <p className="text-[11px] font-bold text-emerald-900/70 mb-1">
-                  Balance {inr(due)}
-                  {disc.manualAmt > 0 && ` − discount ${inr(disc.manualAmt)}`}
-                  {disc.couponAmt > 0 && ` − coupon ${inr(disc.couponAmt)}`}
+                  Balance {inr(due)} − discount {inr(disc.manualAmt)}
                 </p>
               )}
               <p className="text-[11px] font-black uppercase tracking-wider text-emerald-800">Final amount to collect</p>

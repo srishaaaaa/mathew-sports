@@ -272,7 +272,7 @@ export default async function InvoicePage({
                   {order.discount_amount > 0 && (
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-[var(--brand-text-muted)] font-bold uppercase tracking-wider">
-                        {order.coupon_code ? `Coupon ${order.coupon_code}` : "Discount"}{" "}
+                        Discount{" "}
                         {order.discount_type === "PERCENT"
                           ? `(${order.discount_value}%)`
                           : ""}

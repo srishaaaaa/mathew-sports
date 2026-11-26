@@ -56,10 +56,8 @@ export type AdvanceItem = { name: string; desc: string; price: number; qty: numb
 export type AdvancePayment = Payment & {
   kind: "DEPOSIT" | "BALANCE";
   at: string;
-  /** Discounts given when this payment was taken (balance only). */
+  /** Discount given when this payment was taken (balance only). */
   manual_discount: number;
-  coupon_code: string | null;
-  coupon_discount: number;
 };
 
 export type AdvanceOrder = {
@@ -73,7 +71,6 @@ export type AdvanceOrder = {
   discount_type: "PERCENT" | "FIXED";
   discount_value: number;
   discount_amount: number;
-  coupon_code: string | null;
   is_gst: boolean;
   gst_percentage: number;
   gst_amount: number;
@@ -92,18 +89,10 @@ export type AdvanceOrder = {
 export const balanceDue = (a: Pick<AdvanceOrder, "total_amount" | "deposit_amount">) =>
   round2(Math.max(0, a.total_amount - a.deposit_amount));
 
-/** Discount given at balance time, applied to the amount still payable. */
-export function balanceDiscount(
-  due: number,
-  manual: { type: "PERCENT" | "FIXED"; value: number },
-  coupon: { type: "PERCENT" | "FIXED"; value: number } | null,
-) {
-  const manualAmt = round2(Math.min(due, manual.type === "PERCENT" ? (due * manual.value) / 100 : manual.value));
-  const afterManual = Math.max(0, due - manualAmt);
-  const couponAmt = coupon
-    ? round2(Math.min(afterManual, coupon.type === "PERCENT" ? (afterManual * coupon.value) / 100 : coupon.value))
-    : 0;
-  return { manualAmt: Math.max(0, manualAmt), couponAmt: Math.max(0, couponAmt), payable: round2(Math.max(0, afterManual - couponAmt)) };
+/** Manual discount given at balance time, applied to the amount still payable. */
+export function balanceDiscount(due: number, manual: { type: "PERCENT" | "FIXED"; value: number }) {
+  const manualAmt = Math.max(0, round2(Math.min(due, manual.type === "PERCENT" ? (due * manual.value) / 100 : manual.value)));
+  return { manualAmt, payable: round2(Math.max(0, due - manualAmt)) };
 }
 
 /** Totals across all payments on an advance order, per mode. */

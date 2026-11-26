@@ -13,7 +13,6 @@ export type AdvanceCart = {
   items: AdvanceItem[];
   discountType: "PERCENT" | "FIXED";
   discountValue: number;
-  couponCode: string | null;
   isGst: boolean;
   gstPercentage: number;
   deliveryFee: number;
@@ -65,11 +64,10 @@ export default function CreateAdvanceModal({
         items: cart.items,
         discountType: cart.discountType,
         discountValue: cart.discountValue,
-        couponCode: cart.couponCode,
         isGst: cart.isGst,
         gstPercentage: cart.gstPercentage,
         deliveryFee: cart.deliveryFee,
-        deposit: { mode: pay.mode, split: pay.mode === "SPLIT" ? splitParts(pay) : undefined, amount },
+        deposit: { mode: pay.mode, split: pay.mode === "SPLIT" ? splitParts(pay, amount) : undefined, amount },
         deliveryDate: deliveryDate || null,
         notes: notes || null,
       });
@@ -120,7 +118,7 @@ export default function CreateAdvanceModal({
               <div className="rounded-2xl border border-[var(--brand-primary)]/30 bg-[var(--brand-tint)]/50 p-4 text-xs space-y-1.5">
                 <Row k={`Subtotal (${cart.items.reduce((t, i) => t + i.qty, 0)} items)`} v={inr(cart.subtotal)} />
                 {cart.discountAmount > 0 && (
-                  <Row k={cart.couponCode ? `Coupon ${cart.couponCode}` : `Discount${cart.discountType === "PERCENT" ? ` (${cart.discountValue}%)` : ""}`} v={`− ${inr(cart.discountAmount)}`} />
+                  <Row k={`Discount${cart.discountType === "PERCENT" ? ` (${cart.discountValue}%)` : ""}`} v={`− ${inr(cart.discountAmount)}`} />
                 )}
                 {cart.isGst && (
                   <>

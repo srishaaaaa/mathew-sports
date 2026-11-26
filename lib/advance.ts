@@ -3,7 +3,6 @@ import { supabaseAdmin as sb } from "@/lib/supabase";
 import { BRANCH as POS1 } from "@/lib/branches/pos1";
 import { BRANCH as POS2 } from "@/lib/branches/pos2";
 import type { BranchId } from "@/lib/branches/types";
-import { findCoupon } from "@/lib/coupons";
 import {
   balanceDiscount,
   balanceDue,
@@ -47,7 +46,6 @@ function mapAdvance(r: Record<string, unknown>): AdvanceOrder {
     discount_type: r.discount_type === "PERCENT" ? "PERCENT" : "FIXED",
     discount_value: n(r.discount_value),
     discount_amount: n(r.discount_amount),
-    coupon_code: (r.coupon_code as string) ?? null,
     is_gst: Boolean(r.is_gst),
     gst_percentage: n(r.gst_percentage),
     gst_amount: n(r.gst_amount),
@@ -61,7 +59,6 @@ function mapAdvance(r: Record<string, unknown>): AdvanceOrder {
       card: n(p.card),
       amount: n(p.amount),
       manual_discount: n(p.manual_discount),
-      coupon_discount: n(p.coupon_discount),
     })),
     delivery_date: (r.delivery_date as string) ?? null,
     notes: (r.notes as string) ?? null,
@@ -117,7 +114,6 @@ export type CreateAdvanceInput = {
   items: AdvanceItem[];
   discountType: "PERCENT" | "FIXED";
   discountValue: number;
-  couponCode: string | null;
   isGst: boolean;
   gstPercentage: number;
   deliveryFee: number;
@@ -164,7 +160,6 @@ export async function createAdvanceOrder(branch: BranchId, input: CreateAdvanceI
     discount_type: input.discountType,
     discount_value: discountValue,
     discount_amount: discountAmount,
-    coupon_code: findCoupon(input.couponCode)?.code ?? null,
     is_gst: input.isGst,
     gst_percentage: gstPct,
     gst_amount: gstAmount,
@@ -172,7 +167,7 @@ export async function createAdvanceOrder(branch: BranchId, input: CreateAdvanceI
     total_amount: total,
     deposit_amount: depositAmt,
     payments: [
-      { ...payment, amount: depositAmt, kind: "DEPOSIT", at: new Date().toISOString(), manual_discount: 0, coupon_code: null, coupon_discount: 0 },
+      { ...payment, amount: depositAmt, kind: "DEPOSIT", at: new Date().toISOString(), manual_discount: 0 },
     ],
     delivery_date: input.deliveryDate || null,
     notes: input.notes?.trim() || null,
@@ -203,7 +198,6 @@ export async function deleteAdvanceOrder(branch: BranchId, id: string): Promise<
 
 export type FinalizeInput = {
   manual: { type: "PERCENT" | "FIXED"; value: number };
-  couponCode: string | null;
   payment: { mode: PaymentMode; split?: Partial<Record<PayMode, number>> };
 };
 
@@ -220,8 +214,7 @@ export async function finalizeAdvanceOrder(branch: BranchId, id: string, input: 
   if (adv.status === "CANCELLED") throw new Error("This advance order was cancelled.");
 
   const due = balanceDue(adv);
-  const coupon = findCoupon(input.couponCode);
-  const disc = balanceDiscount(due, { type: input.manual.type, value: Math.max(0, n(input.manual.value)) }, coupon);
+  const disc = balanceDiscount(due, { type: input.manual.type, value: Math.max(0, n(input.manual.value)) });
   const payment = makePayment(input.payment.mode, disc.payable, input.payment.split);
   if (input.payment.mode === "SPLIT" && Math.abs(payment.amount - disc.payable) > 0.01) {
     throw new Error("Split amounts must add up to the amount being collected.");
@@ -233,8 +226,6 @@ export async function finalizeAdvanceOrder(branch: BranchId, id: string, input: 
     kind: "BALANCE",
     at: new Date().toISOString(),
     manual_discount: disc.manualAmt,
-    coupon_code: coupon?.code ?? null,
-    coupon_discount: disc.couponAmt,
   };
   const allPayments = [...adv.payments, balancePayment];
   const paid = sumPayments(allPayments);
@@ -242,7 +233,7 @@ export async function finalizeAdvanceOrder(branch: BranchId, id: string, input: 
   // Invoice figures. A discount given at collection comes off a GST-inclusive
   // amount, so its taxable part is total ÷ (1 + GST%).
   const gstRate = adv.is_gst ? adv.gst_percentage : 0;
-  const balDisc = round2(disc.manualAmt + disc.couponAmt);
+  const balDisc = disc.manualAmt;
   const totalDiscount = round2(adv.discount_amount + balDisc / (1 + gstRate / 100));
   const taxable = round2(Math.max(0, adv.subtotal - totalDiscount));
   const grandTotal = round2(adv.deposit_amount + disc.payable); // what was actually collected
@@ -273,7 +264,6 @@ export async function finalizeAdvanceOrder(branch: BranchId, id: string, input: 
       split_cash: paid.cash,
       split_gpay: paid.gpay,
       split_card: paid.card,
-      coupon_code: coupon?.code ?? adv.coupon_code,
       advance_order_id: adv.id,
       advance_paid: adv.deposit_amount,
       order_items: [

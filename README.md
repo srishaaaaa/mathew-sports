@@ -41,10 +41,16 @@ The original logo files are in `brand/`. To rebuild a branch's app icons: `npm r
 ## Billing, advance orders and settings (each branch separately)
 
 - **Payments:** Cash, QR / GPay, Card or **Split** (any 2–3 of them, with the amount for each). Every bill stores its mode and split amounts.
-- **Coupons** (`lib/coupons.ts`), manual discount, GST % (shown as CGST + SGST), delivery.
+- **Billing panel (IGMOLS layout):**
+  - manual discount
+  - **Non-GST Bill / GST Invoice** switch with GST % (shown on invoices as CGST + SGST)
+  - delivery
+  - **Financial Option** (Cash / QR-GPay / Card / Split)
+  - green **Complete Sale** and **Save as Advance Order**
+- **Order History:** Date & Time column, GST / NON-GST / ADVANCE tags, and icon buttons for WhatsApp, invoice preview, order details and delete. Delete is admin only.
 - **Advance orders**: on the billing panel, **Save as Advance Order** takes a deposit (any mode, incl. split) for the current cart.
   - Stored in `advance_orders` / `pos2_advance_orders` with IDs `MS-DEP-…` / `VG-DEP-…`.
-  - The **Advance Orders** tab: filter by period/status, mark ready, view details, print, send on WhatsApp, and **receive balance**. Receiving the balance takes a manual discount and/or coupon and any payment mode, including split.
+  - The **Advance Orders** tab: filter by period/status, mark ready, view details, print, send on WhatsApp, and **receive balance**. Receiving the balance takes an optional manual discount and any payment mode, including split.
   - Deposits are not revenue. Collecting the balance creates one normal invoice for the order. Only then does it count in analytics, including the per-mode cash/UPI/card totals.
   - Receipts: `/advance/<id>` and `/pos2/advance/<id>`, printable as A4, A5, or 58/80 mm thermal (`?format=`).
   - Staff can book advance orders, mark them ready and collect balances. Only admins can cancel or delete.
