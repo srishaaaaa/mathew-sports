@@ -106,28 +106,37 @@ export default function AdminPanel({ adminName }: { adminName: string }) {
     : { "--a": "#141414", "--a-on": "#FFFFFF", "--a-tint": "#EFEEEA" };
 
   return (
-    <div style={accent as CSSProperties} className="min-h-screen flex bg-[#F6F5F1] text-black">
+    <div style={accent as CSSProperties} className="min-h-screen flex bg-[#F6F5F1] text-black font-sans">
       {/* ── Sidebar ─────────────────────────────────────────── */}
       {menuOpen && (
         <div className="fixed inset-0 z-30 bg-black/40 backdrop-blur-[2px] lg:hidden" onClick={() => setMenuOpen(false)} />
       )}
       <aside
-        className={`fixed lg:sticky top-0 z-40 h-screen w-72 shrink-0 bg-[#111111] text-white flex flex-col transition-transform duration-300 ${
+        className={`fixed lg:sticky top-0 z-40 h-screen w-64 shrink-0 bg-[#0F0F0F] text-white border-r border-white/10 shadow-xl flex flex-col transition-transform duration-300 ${
           menuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
-        <div className="p-5 flex items-center gap-3 border-b border-white/10">
-          <div className="flex -space-x-3">
-            {(data ?? []).map((b) => (
-              <span key={b.id} className="w-11 h-11 rounded-xl p-0.5 ring-2 ring-[#111] flex items-center justify-center overflow-hidden" style={{ backgroundColor: b.logoBg }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={b.logo} alt="" className="max-w-full max-h-full object-contain" />
-              </span>
-            ))}
-            {!data && <span className="w-11 h-11 rounded-xl bg-white/10 animate-pulse" />}
+        <div className="p-6 flex items-center gap-3 border-b border-white/10">
+          {/* One tile per shop, same size and style as the POS sidebar logo */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {(data ?? [null, null]).map((b, i) =>
+              b ? (
+                <span
+                  key={b.id}
+                  title={b.shopName}
+                  className="w-10 h-10 rounded-xl border border-white/10 overflow-hidden flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: b.logoBg }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={b.logo} alt={`${b.shopName} logo`} className="w-full h-full object-contain" />
+                </span>
+              ) : (
+                <span key={i} className="w-10 h-10 rounded-xl bg-white/10 animate-pulse" />
+              ),
+            )}
           </div>
           <div className="min-w-0">
-            <p className="font-black text-sm leading-tight">Admin Panel</p>
+            <p className="font-black text-sm tracking-tight leading-tight">Admin Panel</p>
             <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-white text-black text-[9px] font-black uppercase tracking-wider">
               Admin
             </span>
@@ -167,7 +176,7 @@ export default function AdminPanel({ adminName }: { adminName: string }) {
             <a
               key={b.id}
               href={b.home}
-              className="group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-white/80 hover:text-white hover:bg-white/[0.07] transition-colors"
+              className="group flex items-center gap-4 px-4 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider text-white hover:bg-white/10 transition-colors"
             >
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: b.colors.primaryLight }} />
               {b.shopName} POS
@@ -232,7 +241,7 @@ function NavItem({ active, onClick, icon, children }: { active: boolean; onClick
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+      className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer ${
         active ? "bg-white text-black shadow-lg" : "text-white/80 hover:text-white hover:bg-white/[0.07]"
       }`}
     >
@@ -270,7 +279,7 @@ function Overview({
       <header className="flex flex-wrap items-start justify-between gap-4 mb-7">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight">{single ? single.shopName : "Business Overview"}</h1>
+            <h1 className="text-[28px] font-black text-black tracking-tight">{single ? single.shopName : "Business Overview"}</h1>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-black uppercase tracking-wider">
               <span className="relative flex w-1.5 h-1.5">
                 <span className="absolute inset-0 rounded-full bg-emerald-500 animate-ping opacity-60" />
@@ -279,7 +288,7 @@ function Overview({
               Live
             </span>
           </div>
-          <p className="mt-1 text-sm text-black/55 font-medium">
+          <p className="mt-1 text-xs text-black font-semibold">
             {single ? `${single.tagline} · branch figures` : "Combined figures across Matthew Sports and Vybe Girl"}
             {updatedAt && <span className="text-black/35"> · updated {updatedAt.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}</span>}
           </p>
@@ -323,17 +332,17 @@ function Overview({
 
 function StatTile({ icon, label, value, note, loading }: { icon: React.ReactNode; label: string; value: string; note: string; loading: boolean }) {
   return (
-    <div className="bg-white rounded-2xl border border-black/[0.06] p-4 sm:p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] hover:shadow-[0_10px_30px_-12px_rgba(0,0,0,0.15)] transition-shadow">
+    <div className="bg-white border border-black/10 rounded-xl p-4 shadow-sm hover:shadow-md transition-all">
       <div className="flex items-center justify-between text-black/45">
-        <p className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.14em]">{label}</p>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-black">{label}</p>
         <span className="w-7 h-7 rounded-lg bg-[var(--a-tint)] text-[var(--a)] flex items-center justify-center">{icon}</span>
       </div>
       {loading ? (
         <div className="mt-3 h-8 w-28 rounded-lg bg-black/5 animate-pulse" />
       ) : (
-        <p className="mt-2 text-xl sm:text-[1.7rem] font-black tracking-tight tabular-nums">{value}</p>
+        <p className="mt-2 text-xl font-black text-black tabular-nums">{value}</p>
       )}
-      <p className="mt-1 text-[11px] font-semibold text-black/45">{note}</p>
+      <p className="mt-1 text-[9px] font-semibold text-black">{note}</p>
     </div>
   );
 }
@@ -374,6 +383,14 @@ function BranchCard({ b }: { b: BranchOverview }) {
             <p className="mt-1 text-sm sm:text-base font-black tabular-nums truncate">{v}</p>
           </div>
         ))}
+      </div>
+
+      {/* Open advance orders — deposits are held, not yet revenue. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-dashed border-black/15 px-4 py-2.5 text-xs">
+        <span className="font-black uppercase tracking-wider text-black/50">Advance orders</span>
+        <span className="font-semibold text-black/70">
+          {b.advanceOpen} open · <b className="text-black">{inr(b.advanceDue)}</b> balance due · {inr(b.advanceHeld)} deposits held
+        </span>
       </div>
 
       {/* Last 7 days — one series, so the card title names it (no legend). */}
@@ -480,8 +497,8 @@ function Staff({ branches }: { branches: BranchOverview[] }) {
     <div className="animate-in fade-in duration-300 space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Staff &amp; Memberships</h1>
-          <p className="mt-1 text-sm text-black/55 font-medium">Login accounts and the branch each one is restricted to.</p>
+          <h1 className="text-[28px] font-black text-black tracking-tight">Staff &amp; Memberships</h1>
+          <p className="mt-1 text-xs text-black font-semibold">Login accounts and the branch each one is restricted to.</p>
         </div>
         {accounts && (
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-black uppercase tracking-wider">

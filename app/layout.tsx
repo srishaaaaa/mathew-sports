@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegister from "./service-worker-register";
 import { BRANCH } from "@/lib/branches/pos1";
+import { getShopProfile } from "@/lib/shop";
 import { resolveTheme, themeCss } from "@/lib/branches/types";
 
 // The root layout is Branch 1 (Matthew Sports). Branch 2 overrides all of
@@ -19,31 +20,35 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: `${BRANCH.shopName} POS`,
-  description: BRANCH.tagline,
-  applicationName: `${BRANCH.shopName} POS`,
-  // iOS ignores the web manifest, so the standalone behaviour and home-screen
-  // title have to be declared separately here.
-  appleWebApp: {
-    capable: true,
-    title: BRANCH.shortName,
-    statusBarStyle: "black-translucent",
-  },
-  icons: {
-    icon: BRANCH.icons.icon192,
-    apple: BRANCH.icons.apple,
-  },
-  formatDetection: {
-    // Stops iOS turning invoice numbers and totals into tappable phone links.
-    telephone: false,
-  },
-  other: {
-    // Next emits the standard `mobile-web-app-capable`; iOS versions before 17
-    // only honour Apple's legacy name, so declare it too for older shop phones.
-    "apple-mobile-web-app-capable": "yes",
-  },
-};
+// Titles follow this branch's Settings → Store details.
+export async function generateMetadata(): Promise<Metadata> {
+  const shop = await getShopProfile("pos1");
+  return {
+    title: `${shop.shopName} POS`,
+    description: shop.tagline,
+    applicationName: `${shop.shopName} POS`,
+    // iOS ignores the web manifest, so the standalone behaviour and home-screen
+    // title have to be declared separately here.
+    appleWebApp: {
+      capable: true,
+      title: shop.shopName,
+      statusBarStyle: "black-translucent",
+    },
+    icons: {
+      icon: BRANCH.icons.icon192,
+      apple: BRANCH.icons.apple,
+    },
+    formatDetection: {
+      // Stops iOS turning invoice numbers and totals into tappable phone links.
+      telephone: false,
+    },
+    other: {
+      // Next emits the standard `mobile-web-app-capable`; iOS versions before 17
+      // only honour Apple's legacy name, so declare it too for older shop phones.
+      "apple-mobile-web-app-capable": "yes",
+    },
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: defaultTheme.colors.primary,

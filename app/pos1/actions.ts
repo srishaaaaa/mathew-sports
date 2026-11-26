@@ -8,6 +8,8 @@ import type { StoredProduct, StoredOrder } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getThemeId, setThemeId } from "@/lib/settings";
 import { BRANCH } from "@/lib/branches/pos1";
+import * as adv from "@/lib/advance";
+import * as shop from "@/lib/shop";
 
 const requireStaff = () => requireBranch("pos1");
 
@@ -68,4 +70,55 @@ export async function saveThemeAction(themeId: string) {
   if (!BRANCH.themes.some((t) => t.id === themeId)) throw new Error("Unknown theme");
   await setThemeId("pos1", themeId);
   revalidatePath("/", "layout");
+}
+
+// ── Advance orders (partial-payment holds) ────────────────────────
+// Staff can book, mark ready and collect balances; only admins cancel or delete.
+export async function listAdvanceOrdersAction() {
+  await requireStaff();
+  return adv.listAdvanceOrders("pos1");
+}
+
+export async function createAdvanceOrderAction(input: adv.CreateAdvanceInput) {
+  await requireStaff();
+  return adv.createAdvanceOrder("pos1", input);
+}
+
+export async function setAdvanceStatusAction(id: string, status: "PENDING" | "READY") {
+  await requireStaff();
+  await adv.setAdvanceStatus("pos1", id, status);
+}
+
+export async function finalizeAdvanceOrderAction(id: string, input: adv.FinalizeInput) {
+  await requireStaff();
+  const result = await adv.finalizeAdvanceOrder("pos1", id, input);
+  revalidatePath(`/advance/${id}`);
+  return result;
+}
+
+export async function cancelAdvanceOrderAction(id: string) {
+  await requireAdmin();
+  await adv.cancelAdvanceOrder("pos1", id);
+}
+
+export async function deleteAdvanceOrderAction(id: string) {
+  await requireAdmin();
+  await adv.deleteAdvanceOrder("pos1", id);
+}
+
+// ── Store details (Settings → Store details) ──────────────────────
+export async function getShopProfileAction() {
+  return shop.getShopProfile("pos1");
+}
+
+export async function getShopOverridesAction() {
+  await requireAdmin();
+  return shop.getProfileOverrides("pos1");
+}
+
+export async function saveShopProfileAction(overrides: shop.ProfileOverrides) {
+  await requireAdmin();
+  await shop.saveProfileOverrides("pos1", overrides);
+  revalidatePath("/", "layout");
+  return shop.getShopProfile("pos1");
 }

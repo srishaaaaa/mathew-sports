@@ -15,6 +15,7 @@ import {
   type Role,
 } from "@/lib/accounts";
 import { getThemeId } from "@/lib/settings";
+import { getShopProfile } from "@/lib/shop";
 import { BRANCH as POS1 } from "@/lib/branches/pos1";
 import { BRANCH as POS2 } from "@/lib/branches/pos2";
 import { resolveTheme, type BranchConfig, type BranchId, type ThemeColors } from "@/lib/branches/types";
@@ -38,6 +39,10 @@ export type BranchOverview = {
   monthBills: number;
   totalBills: number;
   products: number;
+  /** Open advance orders: count, balance still due, deposits held (not yet revenue). */
+  advanceOpen: number;
+  advanceDue: number;
+  advanceHeld: number;
   last7: DayPoint[];
   recent: RecentInvoice[];
 };
@@ -54,14 +59,17 @@ async function branchOverview(branch: BranchConfig, prefix: string, invoiceBase:
   const sevenAgoKey = istDayKey(new Date(istMidnightUtc(todayKey).getTime() + IST_MS - 6 * 86400000));
   const since = istMidnightUtc(monthKey < sevenAgoKey ? monthKey : sevenAgoKey).toISOString();
 
-  const [recentQ, windowQ, totalQ, productsQ, themeId] = await Promise.all([
+  const [recentQ, windowQ, totalQ, productsQ, themeId, shop, advanceQ] = await Promise.all([
     sb.from(`${prefix}orders`).select("id, customer_name, grand_total, created_at, source").order("created_at", { ascending: false }).limit(6),
     sb.from(`${prefix}orders`).select("grand_total, created_at").gte("created_at", since),
     sb.from(`${prefix}orders`).select("id", { count: "exact", head: true }),
     sb.from(`${prefix}products`).select("id", { count: "exact", head: true }),
     getThemeId(branch.id),
+    getShopProfile(branch.id),
+    sb.from(`${prefix}advance_orders`).select("total_amount, deposit_amount").in("status", ["PENDING", "READY"]),
   ]);
-  for (const q of [recentQ, windowQ, totalQ, productsQ]) if (q.error) throw q.error;
+  for (const q of [recentQ, windowQ, totalQ, productsQ, advanceQ]) if (q.error) throw q.error;
+  const advance = advanceQ.data ?? [];
 
   const days = new Map<string, DayPoint>();
   for (let i = 6; i >= 0; i--) {
@@ -82,10 +90,13 @@ async function branchOverview(branch: BranchConfig, prefix: string, invoiceBase:
 
   return {
     id: branch.id,
-    shopName: branch.shopName,
-    tagline: branch.tagline,
-    logo: branch.logoMark,
-    logoBg: branch.logoBackground,
+    shopName: shop.shopName,
+    tagline: shop.tagline,
+    logo: shop.logoMark,
+    logoBg: shop.logoBackground,
+    advanceOpen: advance.length,
+    advanceDue: advance.reduce((t, a) => t + Math.max(0, Number(a.total_amount) - Number(a.deposit_amount)), 0),
+    advanceHeld: advance.reduce((t, a) => t + (Number(a.deposit_amount) || 0), 0),
     home: branch.homePath,
     invoiceBase,
     colors: resolveTheme(branch, themeId).colors,

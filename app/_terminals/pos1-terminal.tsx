@@ -52,9 +52,41 @@ import {
   logoutAction,
   getThemeAction,
   saveThemeAction,
+  getShopOverridesAction,
+  saveShopProfileAction,
+  listAdvanceOrdersAction,
+  createAdvanceOrderAction,
+  setAdvanceStatusAction,
+  finalizeAdvanceOrderAction,
+  cancelAdvanceOrderAction,
+  deleteAdvanceOrderAction,
 } from "@/app/pos1/actions";
-import { useBranchTheme, ThemeSettingsModal } from "@/app/components/branch-theme";
-import { Palette, LayoutDashboard } from "lucide-react";
+import PaymentPicker, { initialPayState, payStateError, splitParts, type PayState } from "@/app/_terminals/advance/payment-picker";
+import AdvanceOrdersPanel from "@/app/_terminals/advance/advance-orders-panel";
+import CreateAdvanceModal, { type AdvanceCart } from "@/app/_terminals/advance/create-advance-modal";
+import type { AdvanceActions } from "@/app/_terminals/advance/shared";
+import { COUPONS } from "@/lib/coupons";
+import { round2, type PaymentMode } from "@/lib/payments";
+
+// Settings → store details for this branch.
+const SETTINGS_ACTIONS: SettingsActions = {
+  getOverrides: getShopOverridesAction,
+  saveProfile: saveShopProfileAction,
+};
+
+// Advance-order server actions for this branch (stable object for the panel).
+const ADVANCE_ACTIONS: AdvanceActions = {
+  list: listAdvanceOrdersAction,
+  create: createAdvanceOrderAction,
+  setStatus: setAdvanceStatusAction,
+  finalize: finalizeAdvanceOrderAction,
+  cancel: cancelAdvanceOrderAction,
+  remove: deleteAdvanceOrderAction,
+};
+import { useBranchTheme } from "@/app/components/branch-theme";
+import SettingsModal, { type SettingsActions } from "@/app/_terminals/settings/settings-modal";
+import type { ShopProfile } from "@/lib/shop";
+import { Palette, LayoutDashboard, Clock as ClockIcon, Wallet } from "lucide-react";
 
 type CatalogItem = {
   id: string;
@@ -87,7 +119,12 @@ type CompletedOrder = {
   deliveryFee: number;
   grandTotal: number;
   cashReceived: number;
-  paymentMethod?: "CASH" | "CARD" | "GPAY";
+  paymentMethod?: PaymentMode;
+  splitCash?: number;
+  splitGpay?: number;
+  splitCard?: number;
+  couponCode?: string | null;
+  advanceOrderId?: string | null;
   date: string;
   status: "Completed" | "Pending";
 };
@@ -299,9 +336,13 @@ export type TerminalProps = {
   /** Signed-in account, checked on the server before this screen loads. */
   role: "admin" | "staff";
   userName: string;
+  /** This branch's live store details (Settings → Store details). */
+  shop: ShopProfile;
 };
 
-export default function POSBilling({ role, userName }: TerminalProps) {
+export default function POSBilling({ role, userName, shop: initialShop }: TerminalProps) {
+  // Store details can be edited in Settings; keep the latest here.
+  const [shop, setShop] = useState<ShopProfile>(initialShop);
   const [isMounted, setIsMounted] = useState(false);
   // Branch theme: saved per branch in the database, picked in Settings.
   const { themeId, setThemeId } = useBranchTheme(BRANCH, getThemeAction);
@@ -311,7 +352,7 @@ export default function POSBilling({ role, userName }: TerminalProps) {
 
   const [activeCategory, setActiveCategory] = useState<string>("ALL");
   const [activeTab, setActiveTab] = useState<
-    "billing" | "orders" | "analytics"
+    "billing" | "advance" | "orders" | "analytics"
   >("billing");
   const [isOnline, setIsOnline] = useState(false);
   const [customerName, setCustomerName] = useState("");
@@ -325,7 +366,13 @@ export default function POSBilling({ role, userName }: TerminalProps) {
     "fixed",
   );
   const [deliveryFee, setDeliveryFee] = useState<number>(0);
-  const [paymentMethod, setPaymentMethod] = useState<"CASH" | "CARD" | "GPAY">("CASH");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMode>("CASH");
+  // Split payment parts (used when paymentMethod === "SPLIT").
+  const [splitPay, setSplitPay] = useState<PayState>(initialPayState);
+  const [advanceCart, setAdvanceCart] = useState<AdvanceCart | null>(null);
+  const [advanceRefreshKey, setAdvanceRefreshKey] = useState(0);
+  // Analytics: all bills, GST invoices only, or non-GST bills only.
+  const [analyticsBillType, setAnalyticsBillType] = useState<"all" | "gst" | "nongst">("all");
   const [cashReceived, setCashReceived] = useState<number>(0);
   const [applyGST, setApplyGST] = useState<boolean>(false);
   const [gstPercentage, setGstPercentage] = useState<number>(5);
@@ -364,7 +411,7 @@ export default function POSBilling({ role, userName }: TerminalProps) {
     window.location.replace("/login?branch=pos1");
   };
 
-  const selectTab = (tab: "billing" | "orders" | "analytics") => {
+  const selectTab = (tab: "billing" | "advance" | "orders" | "analytics") => {
     setActiveTab(tab);
     // On mobile/tablet the sidebar is an overlay — close it after navigating.
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
@@ -389,12 +436,12 @@ export default function POSBilling({ role, userName }: TerminalProps) {
       setOrders(
         ordersData.map((o) => {
           let phone = o.customer_phone || "";
-          let method: "CASH" | "CARD" | "GPAY" = "CASH";
+          let method: PaymentMode = (o.payment_mode as PaymentMode) || "CASH";
           if (phone.includes("_")) {
             const parts = phone.split("_");
             phone = parts[0];
             const pm = parts[1];
-            if (pm === "CARD" || pm === "GPAY") {
+            if (!o.payment_mode && (pm === "CARD" || pm === "GPAY" || pm === "SPLIT")) {
               method = pm;
             }
           }
@@ -418,6 +465,11 @@ export default function POSBilling({ role, userName }: TerminalProps) {
             grandTotal: o.grand_total,
             cashReceived: o.cash_received,
             paymentMethod: method,
+            splitCash: o.split_cash ?? 0,
+            splitGpay: o.split_gpay ?? 0,
+            splitCard: o.split_card ?? 0,
+            couponCode: o.coupon_code ?? null,
+            advanceOrderId: o.advance_order_id ?? null,
             date: o.created_at,
             status: (o.status === "COMPLETED" ? "Completed" : "Pending") as
               | "Completed"
@@ -504,24 +556,12 @@ export default function POSBilling({ role, userName }: TerminalProps) {
   const [selectedCoupon, setSelectedCoupon] = useState<string>("none");
   const coupons = [
     { code: "none", label: "No Coupon", type: "fixed", value: 0 },
-    {
-      code: "WELCOME10",
-      label: "WELCOME10 (10% Off)",
-      type: "percent",
-      value: 10,
-    },
-    {
-      code: "SUPERPOS",
-      label: "SUPERPOS (₹100 Off)",
-      type: "fixed",
-      value: 100,
-    },
-    {
-      code: "FESTIVE15",
-      label: "FESTIVE15 (15% Off)",
-      type: "percent",
-      value: 15,
-    },
+    ...COUPONS.map((c) => ({
+      code: c.code,
+      label: c.label,
+      type: c.type === "PERCENT" ? "percent" : "fixed",
+      value: c.value,
+    })),
   ];
 
   const handleCouponChange = (code: string) => {
@@ -692,7 +732,7 @@ export default function POSBilling({ role, userName }: TerminalProps) {
     gstPercentage: number;
     gstAmount: number;
     grandTotal: number;
-    paymentMethod?: "CASH" | "CARD" | "GPAY";
+    paymentMethod?: PaymentMode;
   };
 
   // Validates the current cart, writes the order to the database, updates local
@@ -713,6 +753,17 @@ export default function POSBilling({ role, userName }: TerminalProps) {
       );
       return null;
     }
+
+    const splitError = paymentMethod === "SPLIT" ? payStateError({ ...splitPay, mode: "SPLIT" }, grandTotal) : "";
+    if (splitError) {
+      alert(`Split payment: ${splitError}`);
+      return null;
+    }
+    const split = paymentMethod === "SPLIT" ? splitParts(splitPay) : {};
+    const splitCash = paymentMethod === "SPLIT" ? round2(split.CASH ?? 0) : paymentMethod === "CASH" ? grandTotal : 0;
+    const splitGpay = paymentMethod === "SPLIT" ? round2(split.GPAY ?? 0) : paymentMethod === "GPAY" ? grandTotal : 0;
+    const splitCard = paymentMethod === "SPLIT" ? round2(split.CARD ?? 0) : paymentMethod === "CARD" ? grandTotal : 0;
+    const couponCode = selectedCoupon !== "none" ? selectedCoupon : null;
 
     const newOrderId = await generateOrderId();
     const itemsToSave = items;
@@ -748,6 +799,11 @@ export default function POSBilling({ role, userName }: TerminalProps) {
         grand_total: grandTotal,
         cash_received: actualCashReceived,
         created_at: createdAt,
+        payment_mode: paymentMethod,
+        split_cash: splitCash,
+        split_gpay: splitGpay,
+        split_card: splitCard,
+        coupon_code: couponCode,
         order_items: [
           ...itemsToSave.map((i) => ({
             snapshot_name: i.name,
@@ -800,6 +856,10 @@ export default function POSBilling({ role, userName }: TerminalProps) {
       grandTotal,
       cashReceived: actualCashReceived,
       paymentMethod,
+      splitCash,
+      splitGpay,
+      splitCard,
+      couponCode,
       date: createdAt,
       status: "Completed",
     };
@@ -814,6 +874,7 @@ export default function POSBilling({ role, userName }: TerminalProps) {
     setDeliveryFee(0);
     setCashReceived(0);
     setPaymentMethod("CASH");
+    setSplitPay(initialPayState());
     setApplyGST(false);
     setGstPercentage(5);
     setSelectedCoupon("none");
@@ -837,7 +898,7 @@ export default function POSBilling({ role, userName }: TerminalProps) {
     const moneyEmoji = String.fromCodePoint(0x1f4b0);
     const receiptEmoji = String.fromCodePoint(0x1f4e6);
 
-    let message = `${shopEmoji} *${BRANCH.shopName}* ${shopEmoji}\n\n`;
+    let message = `${shopEmoji} *${shop.shopName}* ${shopEmoji}\n\n`;
     message += `${checkEmoji} Here are your invoice details!\n\n`;
 
     message += `*Subtotal:* ₹${snap.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
@@ -852,7 +913,7 @@ export default function POSBilling({ role, userName }: TerminalProps) {
     
     if (snap.paymentMethod) {
       const modeEmoji = snap.paymentMethod === "CASH" ? "💵" : snap.paymentMethod === "CARD" ? "💳" : "📱";
-      const modeText = snap.paymentMethod === "GPAY" ? "GPay (UPI)" : snap.paymentMethod === "CARD" ? "Card" : "Cash";
+      const modeText = snap.paymentMethod === "GPAY" ? "GPay (UPI)" : snap.paymentMethod === "CARD" ? "Card" : snap.paymentMethod === "SPLIT" ? "Split" : "Cash";
       message += `${modeEmoji} *Payment Mode:* ${modeText}\n`;
     }
     message += `\n${receiptEmoji} View and download your detailed digital receipt here:\n${invoiceUrl}`;
@@ -959,7 +1020,10 @@ export default function POSBilling({ role, userName }: TerminalProps) {
   // Real-time analytics derived from orders with period filtering
   const now = new Date();
 
+  const isGstBill = (o: CompletedOrder) => o.items.some((i) => i.name?.startsWith("GST ("));
   const analyticsFilteredOrders = orders.filter((o) => {
+    if (analyticsBillType === "gst" && !isGstBill(o)) return false;
+    if (analyticsBillType === "nongst" && isGstBill(o)) return false;
     if (
       analyticsSearchPhone &&
       !o.customerPhone.includes(analyticsSearchPhone)
@@ -1219,6 +1283,30 @@ export default function POSBilling({ role, userName }: TerminalProps) {
       : "None";
   const topProduct = topItems[0]?.name || "None";
 
+  // Money received per mode. Split bills count towards each mode they used.
+  const gstRevenue = analyticsFilteredOrders.filter(isGstBill).reduce((t, o) => t + o.grandTotal, 0);
+  const nonGstRevenue = totalRevenueAmount - gstRevenue;
+  const received = { CASH: { amt: 0, bills: 0 }, GPAY: { amt: 0, bills: 0 }, CARD: { amt: 0, bills: 0 } };
+  const splitStats = { amt: 0, bills: 0, cash: 0, gpay: 0, card: 0 };
+  analyticsFilteredOrders.forEach((o) => {
+    const m = o.paymentMethod || "CASH";
+    if (m === "SPLIT") {
+      const c = o.splitCash || 0, g = o.splitGpay || 0, k = o.splitCard || 0;
+      splitStats.amt += o.grandTotal;
+      splitStats.bills += 1;
+      splitStats.cash += c;
+      splitStats.gpay += g;
+      splitStats.card += k;
+      if (c > 0) { received.CASH.amt += c; received.CASH.bills += 1; }
+      if (g > 0) { received.GPAY.amt += g; received.GPAY.bills += 1; }
+      if (k > 0) { received.CARD.amt += k; received.CARD.bills += 1; }
+    } else {
+      received[m].amt += o.grandTotal;
+      received[m].bills += 1;
+    }
+  });
+  const rupees = (v: number) => "₹" + v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   if (!isMounted) {
     return <div className="min-h-screen bg-[var(--brand-bg)]" />;
   }
@@ -1387,7 +1475,7 @@ export default function POSBilling({ role, userName }: TerminalProps) {
     const moneyEmoji = String.fromCodePoint(0x1F4B0);
     const receiptEmoji = String.fromCodePoint(0x1F4E6);
 
-    let message = `${shopEmoji} *${BRANCH.shopName}* ${shopEmoji}\n\n`;
+    let message = `${shopEmoji} *${shop.shopName}* ${shopEmoji}\n\n`;
     message += `${checkEmoji} Here are your invoice details!\n\n`;
     
     message += `*Subtotal:* ₹${order.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
@@ -1514,16 +1602,16 @@ export default function POSBilling({ role, userName }: TerminalProps) {
             {/* Header branding */}
             <div className="p-6 border-b border-white/10 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 border border-white/10 rounded-xl flex items-center justify-center overflow-hidden shrink-0" style={{ backgroundColor: BRANCH.logoBackground }}>
+                <div className="w-12 h-12 border border-white/10 rounded-xl flex items-center justify-center overflow-hidden shrink-0" style={{ backgroundColor: shop.logoBackground }}>
                   <img
-                    src={BRANCH.logoMark}
+                    src={shop.logoMark}
                     alt="Logo"
                     className="w-full h-full object-contain"
                   />
                 </div>
                 <div>
                   <span className="font-black text-sm tracking-tight text-[#FFFFFF] block ">
-                    {BRANCH.shopName}
+                    {shop.shopName}
                   </span>
                 </div>
               </div>
@@ -1550,6 +1638,17 @@ export default function POSBilling({ role, userName }: TerminalProps) {
               >
                 <Receipt className="w-5 h-5" />
                 Billing Panel
+              </button>
+              <button
+                onClick={() => selectTab("advance")}
+                className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer ${
+                  activeTab === "advance"
+                    ? "bg-[#FFFFFF] text-[var(--brand-primary)] shadow-lg scale-102"
+                    : "text-white font-bold hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                <ClockIcon className="w-5 h-5" />
+                Advance Orders
               </button>
               <button
                 onClick={() => selectTab("orders")}
@@ -1616,11 +1715,14 @@ export default function POSBilling({ role, userName }: TerminalProps) {
         </div>
       </aside>
       {showSettings && role === "admin" && (
-        <ThemeSettingsModal
+        <SettingsModal
           branch={BRANCH}
+          shop={shop}
+          actions={SETTINGS_ACTIONS}
           themeId={themeId}
-          onPreview={setThemeId}
-          onSave={saveThemeAction}
+          onPreviewTheme={setThemeId}
+          onSaveTheme={saveThemeAction}
+          onShopSaved={setShop}
           onClose={() => setShowSettings(false)}
         />
       )}
@@ -1641,10 +1743,10 @@ export default function POSBilling({ role, userName }: TerminalProps) {
             </button>
             <div>
               <h1 className="text-lg font-black text-[#000000] tracking-tight ">
-                {BRANCH.shopName}
+                {shop.shopName}
               </h1>
             </div>
-            <InstallAppButton appName={`${BRANCH.shopName} POS`} />
+            <InstallAppButton appName={`${shop.shopName} POS`} />
           </div>
 
           {/* OFFLINE / ONLINE Toggle (only shown when billing tab is active) */}
@@ -2120,6 +2222,24 @@ export default function POSBilling({ role, userName }: TerminalProps) {
 
                   {/* Discounts section */}
                   <div className="space-y-4 pt-1">
+                    {/* Coupon */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#000000] uppercase tracking-[0.1em] mb-1.5">
+                        Coupon
+                      </label>
+                      <select
+                        value={selectedCoupon}
+                        onChange={(e) => handleCouponChange(e.target.value)}
+                        className="w-full bg-white border border-black/10 text-[#000000] rounded-lg px-3 py-2 text-xs font-bold focus:outline-none focus:border-[var(--brand-primary)] cursor-pointer"
+                      >
+                        {coupons.map((c) => (
+                          <option key={c.code} value={c.code}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     {/* Manual Discount */}
                     <div>
                       <label className="block text-[10px] font-bold text-[#000000] uppercase tracking-[0.1em] mb-1.5">
@@ -2236,31 +2356,17 @@ export default function POSBilling({ role, userName }: TerminalProps) {
                       </span>
                     </div>
 
-                    {/* Payment Method Selector */}
+                    {/* Payment Method Selector (Cash / QR-GPay / Card / Split) */}
                     <div className="mt-4">
-                      <span className="block text-[10px] font-bold text-[var(--brand-text-muted)] uppercase tracking-wider mb-2">
-                        Payment Method
-                      </span>
-                      <div className="flex bg-[var(--brand-border)]/30 p-1 rounded-lg">
-                        <button
-                          onClick={() => setPaymentMethod("CASH")}
-                          className={`flex-1 flex items-center justify-center py-2 text-xs font-bold rounded-md transition-all ${paymentMethod === "CASH" ? "bg-white text-[var(--brand-primary)] shadow-sm" : "text-[var(--brand-text-soft)] hover:text-[#000000]"}`}
-                        >
-                          Cash
-                        </button>
-                        <button
-                          onClick={() => setPaymentMethod("CARD")}
-                          className={`flex-1 flex items-center justify-center py-2 text-xs font-bold rounded-md transition-all ${paymentMethod === "CARD" ? "bg-white text-[var(--brand-primary)] shadow-sm" : "text-[var(--brand-text-soft)] hover:text-[#000000]"}`}
-                        >
-                          Card
-                        </button>
-                        <button
-                          onClick={() => setPaymentMethod("GPAY")}
-                          className={`flex-1 flex items-center justify-center py-2 text-xs font-bold rounded-md transition-all ${paymentMethod === "GPAY" ? "bg-white text-[var(--brand-primary)] shadow-sm" : "text-[var(--brand-text-soft)] hover:text-[#000000]"}`}
-                        >
-                          GPay
-                        </button>
-                      </div>
+                      <PaymentPicker
+                        value={{ ...splitPay, mode: paymentMethod }}
+                        onChange={(p) => {
+                          setSplitPay(p);
+                          setPaymentMethod(p.mode);
+                        }}
+                        amount={grandTotal}
+                        label="Payment method"
+                      />
                     </div>
 
                     {paymentMethod === "CASH" && (
@@ -2345,11 +2451,75 @@ export default function POSBilling({ role, userName }: TerminalProps) {
                       )}
                       {isSavingOrder ? "Saving…" : "Save Order"}
                     </button>
+
+                    <button
+                      onClick={() => {
+                        const valid = items.filter((i) => i.name && i.name.trim() && i.price > 0 && i.qty > 0);
+                        if (valid.length === 0 || valid.length !== items.length) {
+                          alert("Please ensure all items have a valid name and a price greater than 0. Remove any empty rows before proceeding.");
+                          return;
+                        }
+                        setAdvanceCart({
+                          customerName,
+                          customerPhone,
+                          source: isOnline ? "ONLINE" : "OFFLINE",
+                          items: valid.map((i) => ({ name: i.name, desc: i.desc, price: i.price, qty: i.qty })),
+                          discountType: discountType === "percent" ? "PERCENT" : "FIXED",
+                          discountValue,
+                          couponCode: selectedCoupon !== "none" ? selectedCoupon : null,
+                          isGst: applyGST,
+                          gstPercentage,
+                          deliveryFee,
+                          subtotal,
+                          discountAmount: Math.min(subtotal, calculatedDiscount),
+                          gstAmount,
+                          total: grandTotal,
+                        });
+                      }}
+                      disabled={isSavingOrder || isCompletingSale}
+                      className="w-full mt-2 bg-white hover:bg-amber-50 text-amber-700 border-2 border-amber-400 py-3 rounded-lg font-bold text-[10px] uppercase tracking-[0.1em] flex items-center justify-center gap-2 transition-transform active:scale-[0.98] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <ClockIcon className="w-3.5 h-3.5" />
+                      Save as Advance Order
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === "advance" && (
+          <AdvanceOrdersPanel
+            branch={{ shopName: shop.shopName, receiptBase: "/advance", invoiceBase: "/invoice" }}
+            actions={ADVANCE_ACTIONS}
+            role={role}
+            refreshKey={advanceRefreshKey}
+            onInvoiceCreated={() => fetchData()}
+          />
+        )}
+
+        {advanceCart && (
+          <CreateAdvanceModal
+            cart={advanceCart}
+            branch={{ shopName: shop.shopName, receiptBase: "/advance", invoiceBase: "/invoice" }}
+            actions={ADVANCE_ACTIONS}
+            onClose={() => setAdvanceCart(null)}
+            onSaved={() => {
+              setAdvanceRefreshKey((k) => k + 1);
+              setCustomerName("");
+              setCustomerPhone("");
+              setItems([{ id: "1", name: "", desc: "", price: 0, qty: 1 }]);
+              setDiscountValue(0);
+              setDeliveryFee(0);
+              setCashReceived(0);
+              setPaymentMethod("CASH");
+              setSplitPay(initialPayState());
+              setApplyGST(false);
+              setGstPercentage(5);
+              setSelectedCoupon("none");
+            }}
+          />
         )}
 
         {activeTab === "orders" && (
@@ -2642,11 +2812,26 @@ export default function POSBilling({ role, userName }: TerminalProps) {
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
               <div>
                 <h2 className="text-[28px] font-black text-[#000000] tracking-tight">
-                  POS Analytics
+                  Revenue Analytics
                 </h2>
                 <p className="text-xs text-[#000000] font-semibold mt-1">
-                  Real-time store & channel insights
+                  {analyticsBillType === "gst" ? "GST invoices only" : analyticsBillType === "nongst" ? "Non-GST bills only" : "All bills"} — full store & channel insights
                 </p>
+                <div className="inline-flex mt-3 bg-white border border-black/10 rounded-xl p-1 shadow-sm">
+                  {(["all", "gst", "nongst"] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setAnalyticsBillType(t)}
+                      className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer ${
+                        analyticsBillType === t
+                          ? "bg-[var(--brand-primary-dark)] text-[var(--brand-on-primary)] shadow-sm"
+                          : "text-black hover:bg-black/5"
+                      }`}
+                    >
+                      {t === "all" ? "All bills" : t === "gst" ? "GST invoices" : "Non-GST bills"}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Period Filters & Refresh Button */}
@@ -3046,7 +3231,7 @@ export default function POSBilling({ role, userName }: TerminalProps) {
                       ₹{totalRevenueAmount.toLocaleString()}
                     </div>
                     <div className="text-[9px] text-[#000000] font-semibold">
-                      POS + manual combined
+                      GST ({rupees(gstRevenue)}) + Non-GST ({rupees(nonGstRevenue)})
                     </div>
                   </div>
 
@@ -3102,7 +3287,7 @@ export default function POSBilling({ role, userName }: TerminalProps) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                   {/* Row 2 */}
                   <div className="bg-white border border-black/10 rounded-xl p-4 shadow-sm hover:shadow-md transition-all">
                     <div className="flex justify-between items-start mb-3">
@@ -3158,23 +3343,6 @@ export default function POSBilling({ role, userName }: TerminalProps) {
                   <div className="bg-white border border-black/10 rounded-xl p-4 shadow-sm hover:shadow-md transition-all">
                     <div className="flex justify-between items-start mb-3">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-[#000000]">
-                        Avg Order Value
-                      </span>
-                      <div className="w-6 h-6 rounded-full bg-[var(--brand-primary-dark)]/10 flex items-center justify-center">
-                        <Zap className="w-3 h-3 text-[var(--brand-primary-dark)] animate-pulse" />
-                      </div>
-                    </div>
-                    <div className="text-xl font-black text-[#000000] mb-1">
-                      ₹{Math.round(avgOrderValue).toLocaleString()}
-                    </div>
-                    <div className="text-[9px] text-[#000000] font-semibold">
-                      Per completed order
-                    </div>
-                  </div>
-
-                  <div className="bg-white border border-black/10 rounded-xl p-4 shadow-sm hover:shadow-md transition-all">
-                    <div className="flex justify-between items-start mb-3">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#000000]">
                         Top Product
                       </span>
                       <div className="w-6 h-6 rounded-full bg-[var(--brand-primary)]/10 flex items-center justify-center">
@@ -3192,6 +3360,41 @@ export default function POSBilling({ role, userName }: TerminalProps) {
                     </div>
                   </div>
                 </div>
+
+                {/* Row 3: money received by payment mode */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-2">
+                  {[
+                    { label: "Cash received", value: received.CASH.amt, note: `${received.CASH.bills} bill${received.CASH.bills === 1 ? "" : "s"}`, tone: "bg-emerald-100 text-emerald-700" },
+                    { label: "GPay / UPI received", value: received.GPAY.amt, note: `${received.GPAY.bills} bill${received.GPAY.bills === 1 ? "" : "s"}`, tone: "bg-slate-100 text-slate-700" },
+                    {
+                      label: "Split received",
+                      value: splitStats.amt,
+                      note: splitStats.bills
+                        ? `${splitStats.bills} bill${splitStats.bills === 1 ? "" : "s"} - ${[
+                            splitStats.cash ? `Cash ${rupees(splitStats.cash)}` : "",
+                            splitStats.gpay ? `UPI ${rupees(splitStats.gpay)}` : "",
+                            splitStats.card ? `Card ${rupees(splitStats.card)}` : "",
+                          ].filter(Boolean).join(" + ")}`
+                        : "0 bills",
+                      tone: "bg-red-100 text-red-700",
+                    },
+                    { label: "Card received", value: received.CARD.amt, note: `${received.CARD.bills} bill${received.CARD.bills === 1 ? "" : "s"}`, tone: "bg-violet-100 text-violet-700" },
+                  ].map((c) => (
+                    <div key={c.label} className="bg-white border border-black/10 rounded-xl p-4 shadow-sm hover:shadow-md transition-all">
+                      <div className="flex justify-between items-start mb-3">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#000000]">{c.label}</span>
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center ${c.tone}`}>
+                          <Wallet className="w-3 h-3" />
+                        </div>
+                      </div>
+                      <div className="text-xl font-black text-[#000000] mb-1">{rupees(c.value)}</div>
+                      <div className="text-[9px] text-[#000000] font-semibold truncate" title={c.note}>{c.note}</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] font-semibold text-black/50 mb-8">
+                  Split bills are also counted in the Cash, GPay / UPI and Card totals by the part paid each way. Advance-order deposits count once the balance is collected and the order is invoiced.
+                </p>
 
                 {/* Main Charts & Breakdowns */}
                 <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6">
@@ -3847,7 +4050,7 @@ export default function POSBilling({ role, userName }: TerminalProps) {
         {/* Classy Footer */}
         <footer className="mt-auto pt-10 pb-2 border-t border-black/10 flex flex-col md:flex-row justify-between items-center text-[10px] text-[#000000] font-semibold uppercase tracking-wider gap-4">
           <div className="text-[#000000]">
-            &copy; 2026 All Rights Reserved. {BRANCH.shopName}.
+            &copy; 2026 All Rights Reserved. {shop.shopName}.
           </div>
           <div>
             Powered By{" "}

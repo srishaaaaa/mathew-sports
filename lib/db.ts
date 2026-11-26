@@ -31,6 +31,15 @@ export type StoredOrder = {
   cash_received: number;
   created_at: string;
   order_items: StoredOrderItem[];
+  // How it was paid (SPLIT spreads it across the split_* amounts).
+  payment_mode?: "CASH" | "GPAY" | "CARD" | "SPLIT";
+  split_cash?: number;
+  split_gpay?: number;
+  split_card?: number;
+  coupon_code?: string | null;
+  /** Set when this bill finalised an advance order; advance_paid = deposit taken earlier. */
+  advance_order_id?: string | null;
+  advance_paid?: number;
 };
 
 const num = (v: unknown) => Number(v ?? 0); // defensive: coerce numeric/int8 to JS number
@@ -108,6 +117,7 @@ const ORDER_SELECT = `
   id, customer_name, customer_phone, source, status, subtotal,
   discount_type, discount_value, discount_amount, delivery_fee,
   grand_total, cash_received, created_at,
+  payment_mode, split_cash, split_gpay, split_card, coupon_code, advance_order_id, advance_paid,
   order_items ( snapshot_name, snapshot_desc, snapshot_price, quantity, position )`;
 
 const mapOrder = (o: any): StoredOrder => ({
@@ -124,6 +134,13 @@ const mapOrder = (o: any): StoredOrder => ({
   grand_total: num(o.grand_total),
   cash_received: num(o.cash_received),
   created_at: new Date(o.created_at).toISOString(),
+  payment_mode: o.payment_mode || "CASH",
+  split_cash: num(o.split_cash),
+  split_gpay: num(o.split_gpay),
+  split_card: num(o.split_card),
+  coupon_code: o.coupon_code ?? null,
+  advance_order_id: o.advance_order_id ?? null,
+  advance_paid: num(o.advance_paid),
   order_items: [...(o.order_items ?? [])]
     .sort((a, b) => a.position - b.position)
     .map((i: any) => ({

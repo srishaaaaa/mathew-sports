@@ -6,6 +6,8 @@ import type { Metadata } from "next";
 import { BRANCH } from "@/lib/branches/pos2";
 import { resolveTheme, themeCss } from "@/lib/branches/types";
 import { getThemeId } from "@/lib/settings";
+import { getShopProfile } from "@/lib/shop";
+import { describePayment } from "@/lib/payments";
 
 export async function generateMetadata({
   params,
@@ -14,7 +16,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   return {
-    title: `Invoice - ${id} · ${BRANCH.shopName}`,
+    title: `Invoice - ${id} · ${(await getShopProfile("pos2")).shopName}`,
   };
 }
 
@@ -24,7 +26,7 @@ export default async function InvoicePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [order, savedThemeId] = await Promise.all([getOrder(id), getThemeId("pos2")]);
+  const [order, savedThemeId, shop] = await Promise.all([getOrder(id), getThemeId("pos2"), getShopProfile("pos2")]);
   const theme = resolveTheme(BRANCH, savedThemeId);
 
   if (!order) {
@@ -59,20 +61,20 @@ export default async function InvoicePage({
         <div className="bg-[var(--brand-surface)] border-b border-[var(--brand-border)] p-8 sm:p-12 print:p-6 flex flex-col items-center text-center">
           <div
             className="h-24 w-full max-w-[280px] rounded-2xl overflow-hidden flex items-center justify-center mb-4 print:[-webkit-print-color-adjust:exact] print:[print-color-adjust:exact]"
-            style={{ backgroundColor: BRANCH.logoBackground }}
+            style={{ backgroundColor: shop.logoBackground }}
           >
             <img
-              src={BRANCH.logo}
-              alt={`${BRANCH.shopName} Logo`}
+              src={shop.logo}
+              alt={`${shop.shopName} Logo`}
               className="max-w-full max-h-full object-contain"
             />
           </div>
           <h1 className="text-3xl font-black text-[var(--brand-primary)] tracking-tight">
-            {BRANCH.shopName}
+            {shop.shopName}
           </h1>
-          {BRANCH.ownerName && (
+          {shop.ownerName && (
             <p className="text-sm text-[var(--brand-text-soft)] font-semibold mt-1">
-              {BRANCH.ownerName}
+              {shop.ownerName}
             </p>
           )}
           <p className="text-xs text-[var(--brand-text-muted)] font-bold tracking-wider mt-1 mb-4">
@@ -80,37 +82,37 @@ export default async function InvoicePage({
           </p>
 
           <div className="flex flex-col items-center gap-2 text-sm text-[var(--brand-text-soft)] font-semibold">
-            {BRANCH.address && (
+            {shop.address && (
               <div className="text-center max-w-md leading-relaxed">
                 <span className="inline-block text-[var(--brand-primary)] mr-1.5 align-middle -mt-0.5">
                   <MapPin className="w-3.5 h-3.5" />
                 </span>
-                <span>{BRANCH.address}</span>
+                <span>{shop.address}</span>
               </div>
             )}
             <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
-              {BRANCH.shopPhone && (
+              {shop.shopPhone && (
                 <span className="flex items-center gap-1.5">
                   <Store className="w-3.5 h-3.5 text-[var(--brand-primary)] shrink-0" />
-                  {BRANCH.shopPhone}
+                  {shop.shopPhone}
                 </span>
               )}
-              {BRANCH.phone && (
+              {shop.phone && (
                 <span className="flex items-center gap-1.5">
                   <Phone className="w-3.5 h-3.5 text-[var(--brand-primary)] shrink-0" />
-                  {BRANCH.phone}
+                  {shop.phone}
                 </span>
               )}
-              {BRANCH.email && (
+              {shop.email && (
                 <span className="flex items-center gap-1.5">
                   <Mail className="w-3.5 h-3.5 text-[var(--brand-primary)] shrink-0" />
-                  {BRANCH.email}
+                  {shop.email}
                 </span>
               )}
-              {BRANCH.instagram && (
+              {shop.instagram && (
                 <span className="flex items-center gap-1.5">
                   <AtSign className="w-3.5 h-3.5 text-[var(--brand-primary)] shrink-0" />
-                  {BRANCH.instagram}
+                  {shop.instagram}
                 </span>
               )}
             </div>
@@ -266,7 +268,7 @@ export default async function InvoicePage({
                   {order.discount_amount > 0 && (
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-[var(--brand-text-muted)] font-bold uppercase tracking-wider">
-                        Discount{" "}
+                        {order.coupon_code ? `Coupon ${order.coupon_code}` : "Discount"}{" "}
                         {order.discount_type === "PERCENT"
                           ? `(${order.discount_value}%)`
                           : ""}
@@ -323,6 +325,33 @@ export default async function InvoicePage({
                   minimumFractionDigits: 2,
                 })}
               </span>
+            </div>
+
+            {/* How it was paid */}
+            <div className="pt-3 mt-1 border-t border-dashed border-[var(--brand-border)] space-y-1 text-xs">
+              {(order.advance_paid ?? 0) > 0 && (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-[var(--brand-text-muted)] font-bold">Advance paid earlier{order.advance_order_id ? ` (${order.advance_order_id})` : ""}</span>
+                    <span className="font-bold">₹{(order.advance_paid ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[var(--brand-text-muted)] font-bold">Balance paid</span>
+                    <span className="font-bold">₹{(order.grand_total - (order.advance_paid ?? 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </>
+              )}
+              <div className="flex justify-between">
+                <span className="text-[var(--brand-text-muted)] font-bold">Paid by</span>
+                <span className="font-bold text-right">
+                  {describePayment({
+                    mode: order.payment_mode ?? "CASH",
+                    cash: order.split_cash ?? 0,
+                    gpay: order.split_gpay ?? 0,
+                    card: order.split_card ?? 0,
+                  })}
+                </span>
+              </div>
             </div>
           </div>
         </div>
