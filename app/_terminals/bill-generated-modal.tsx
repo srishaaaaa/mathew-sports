@@ -64,93 +64,90 @@ export default function BillGeneratedModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[250] flex items-center justify-center p-4 animate-in fade-in duration-150">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[740px] max-h-[92vh] overflow-y-auto p-6 sm:p-8 animate-in zoom-in-95 duration-200">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[520px] p-5 animate-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 pb-5 border-b border-black/10">
-          <div>
-            <div className="flex items-center gap-3">
-              <h2 className="text-[28px] font-black text-black tracking-tight leading-none">Bill Generated</h2>
-              <span className="px-2.5 py-1 rounded-md bg-black/[0.06] text-[10px] font-black uppercase tracking-wider text-black">
+        <div className="flex items-center justify-between gap-3 pb-3 border-b border-black/10">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-black text-black tracking-tight leading-none">Bill Generated</h2>
+              <span className="px-2 py-0.5 rounded bg-black/[0.06] text-[9px] font-black uppercase tracking-wider text-black">
                 {bill.isGst ? "GST" : "Non-GST"}
               </span>
             </div>
-            <p className="mt-2 font-mono text-xs font-bold text-[var(--brand-primary-dark)]">#{bill.id}</p>
+            <p className="mt-1 font-mono text-[11px] font-bold text-[var(--brand-primary-dark)]">#{bill.id}</p>
           </div>
-          <button onClick={onNewSale} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-black text-white text-[11px] font-black uppercase tracking-wider cursor-pointer hover:bg-black/85">
-            {newSaleLabel === "New sale" ? <Plus className="w-4 h-4" /> : <Check className="w-4 h-4" />} {newSaleLabel}
+          <button onClick={onNewSale} className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black text-white text-[10px] font-black uppercase tracking-wider cursor-pointer hover:bg-black/85">
+            {newSaleLabel === "New sale" ? <Plus className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />} {newSaleLabel}
           </button>
         </div>
 
         {/* Payment receipt */}
-        <div className="mt-5 rounded-2xl border border-black/10 p-6">
-          <div className="flex items-center justify-between pb-3 border-b border-black/5">
-            <p className="text-[11px] font-black uppercase tracking-[0.15em] text-black/45">Payment receipt</p>
-            <span className="px-2.5 py-1 rounded-md bg-[var(--brand-tint)] text-[10px] font-black uppercase tracking-wider text-[var(--brand-primary-dark)]">
+        <div className="mt-3 rounded-xl border border-black/10 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-black uppercase tracking-[0.15em] text-black/45">Payment receipt</p>
+            <span className="px-2 py-0.5 rounded bg-[var(--brand-tint)] text-[9px] font-black uppercase tracking-wider text-[var(--brand-primary-dark)]">
               {modeLabel(bill.paymentMethod)}
             </span>
           </div>
-          <div className="flex justify-between items-center mt-4">
-            <span className="text-sm font-semibold text-black/70">Grand Total</span>
-            <span className="text-2xl font-black text-black">{inr(bill.grandTotal)}</span>
+          <div className="flex justify-between items-baseline mt-2">
+            <span className="text-xs font-semibold text-black/70">Grand Total</span>
+            <span className="text-lg font-black text-black">{inr(bill.grandTotal)}</span>
           </div>
-          <div className="flex justify-between items-center mt-3">
-            <span className="text-sm font-semibold text-black/70">Amount Received</span>
-            <span className="text-lg font-black text-black">{inr(bill.amountReceived)}</span>
+          <div className="flex justify-between items-baseline mt-1">
+            <span className="text-xs font-semibold text-black/70">Amount Received</span>
+            <span className="text-sm font-black text-black">{inr(bill.amountReceived)}</span>
           </div>
-          {splitParts.length > 0 && <p className="text-right text-[11px] font-semibold text-black/45 mt-0.5">{splitParts.join(" + ")}</p>}
-          <div className="flex justify-between items-center mt-4 rounded-xl bg-black/[0.04] border border-black/10 px-4 py-5">
-            <span className="text-sm font-bold text-[#991B1B]">Balance Returned</span>
-            <span className="text-2xl font-black text-[#991B1B]">{inr(balance)}</span>
+          {splitParts.length > 0 && <p className="text-right text-[10px] font-semibold text-black/45">{splitParts.join(" + ")}</p>}
+          <div className="flex justify-between items-center mt-2 rounded-lg bg-black/[0.04] border border-black/10 px-3 py-2">
+            <span className="text-xs font-bold text-[#991B1B]">Balance Returned</span>
+            <span className="text-base font-black text-[#991B1B]">{inr(balance)}</span>
           </div>
-          {note && <p className="mt-3 text-xs font-semibold text-black/55">{note}</p>}
+          {note && <p className="mt-2 text-[11px] font-semibold text-black/55 leading-snug">{note}</p>}
         </div>
 
         {/* Actions */}
-        <div className="grid sm:grid-cols-3 gap-3 mt-5">
-          <button onClick={onPrint} className="h-11 rounded-xl border border-black/15 bg-white text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-black/[0.03] cursor-pointer">
-            <Printer className="w-4 h-4 text-[var(--brand-primary-dark)]" /> Print receipt
+        <div className="grid grid-cols-3 gap-2 mt-3">
+          <button onClick={onPrint} className="h-10 rounded-lg border border-black/15 bg-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-black/[0.03] cursor-pointer">
+            <Printer className="w-3.5 h-3.5 text-[var(--brand-primary-dark)]" /> Print
           </button>
-          <button onClick={onView} className="h-11 rounded-xl border border-black/15 bg-white text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-black/[0.03] cursor-pointer">
-            <Eye className="w-4 h-4 text-[var(--brand-primary-dark)]" /> View
+          <button onClick={onView} className="h-10 rounded-lg border border-black/15 bg-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-black/[0.03] cursor-pointer">
+            <Eye className="w-3.5 h-3.5 text-[var(--brand-primary-dark)]" /> View
           </button>
-          <button onClick={whatsapp} className="h-11 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer">
-            <WhatsAppIcon /> WhatsApp invoice
-          </button>
-          <button onClick={onNewSale} className="h-11 rounded-xl bg-black hover:bg-black/85 text-white text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer">
-            {newSaleLabel === "New sale" ? <Plus className="w-4 h-4" /> : <Check className="w-4 h-4" />} {newSaleLabel}
+          <button onClick={whatsapp} className="h-10 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer">
+            <WhatsAppIcon /> WhatsApp
           </button>
         </div>
 
         {askPhone && (
-          <div className="mt-4 flex gap-2 items-center rounded-xl border border-[#10B981]/40 bg-[#10B981]/5 p-3 animate-in fade-in duration-150">
-            <span className="text-sm font-bold text-black/60 pl-1">+91</span>
+          <div className="mt-2 flex gap-2 items-center rounded-lg border border-[#10B981]/40 bg-[#10B981]/5 p-2 animate-in fade-in duration-150">
+            <span className="text-xs font-bold text-black/60 pl-1">+91</span>
             <input
               autoFocus
               value={phone}
               onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
-              placeholder="Customer's 10-digit WhatsApp number"
-              className="flex-1 h-10 px-3 rounded-lg border border-black/10 text-sm font-bold outline-none focus:border-[#10B981] bg-white"
+              placeholder="Customer's WhatsApp number"
+              className="flex-1 min-w-0 h-9 px-3 rounded-md border border-black/10 text-sm font-bold outline-none focus:border-[#10B981] bg-white"
             />
             <button
               onClick={() => /^\d{10}$/.test(phone) && onWhatsApp(phone)}
               disabled={!/^\d{10}$/.test(phone)}
-              className="h-10 px-4 rounded-lg bg-[#10B981] text-white text-xs font-black uppercase flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+              className="h-9 px-3 rounded-md bg-[#10B981] text-white text-[10px] font-black uppercase flex items-center gap-1 disabled:opacity-40 cursor-pointer"
             >
-              <Send className="w-4 h-4" /> Send
+              <Send className="w-3.5 h-3.5" /> Send
             </button>
           </div>
         )}
 
         {/* Items sold */}
-        <div className="mt-5 rounded-2xl border border-black/10 p-6">
-          <p className="text-[11px] font-black uppercase tracking-[0.15em] text-black/45 pb-3 border-b border-black/5">Items sold</p>
-          <div className="mt-3 space-y-2.5">
+        <div className="mt-3 rounded-xl border border-black/10 px-4 py-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.15em] text-black/45">Items sold</p>
+          <div className="mt-1.5 space-y-1 max-h-28 overflow-y-auto pr-1">
             {bill.items.map((i, k) => (
-              <div key={k} className="flex justify-between items-center text-sm">
-                <span className="font-semibold text-black">
-                  {i.name} <span className="text-[11px] font-semibold text-black/40">× {i.qty} {i.qty === 1 ? "piece" : "pieces"}</span>
+              <div key={k} className="flex justify-between items-center text-xs">
+                <span className="font-semibold text-black truncate">
+                  {i.name} <span className="text-[10px] font-semibold text-black/40">× {i.qty}</span>
                 </span>
-                <span className="font-bold text-black">{inr(i.price * i.qty)}</span>
+                <span className="font-bold text-black shrink-0 pl-2">{inr(i.price * i.qty)}</span>
               </div>
             ))}
           </div>

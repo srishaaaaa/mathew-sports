@@ -66,6 +66,7 @@ import AdvanceOrdersPanel from "@/app/_terminals/advance/advance-orders-panel";
 import CreateAdvanceModal, { type AdvanceCart } from "@/app/_terminals/advance/create-advance-modal";
 import type { AdvanceActions } from "@/app/_terminals/advance/shared";
 import { cgstSgst, round2, type PaymentMode } from "@/lib/payments";
+import { billMessage } from "@/lib/whatsapp-message";
 
 // Settings → store details for this branch.
 const SETTINGS_ACTIONS: SettingsActions = {
@@ -126,6 +127,7 @@ type CompletedOrder = {
   splitGpay?: number;
   splitCard?: number;
   advanceOrderId?: string | null;
+  advancePaid?: number;
   date: string;
   status: "Completed" | "Pending";
 };
@@ -473,6 +475,7 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
             splitGpay: o.split_gpay ?? 0,
             splitCard: o.split_card ?? 0,
             advanceOrderId: o.advance_order_id ?? null,
+            advancePaid: o.advance_paid ?? 0,
             date: o.created_at,
             status: (o.status === "COMPLETED" ? "Completed" : "Pending") as
               | "Completed"
@@ -701,6 +704,9 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
     items: { name: string; qty: number; price: number }[];
     amountReceived: number;
     split?: { cash: number; gpay: number; card: number };
+    deliveryFee: number;
+    discountType: "PERCENT" | "FIXED";
+    discountValue: number;
   };
 
   // Validates the current cart, writes the order to the database, updates local
@@ -754,6 +760,9 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
             ? splitTotal(splitPay)
             : grandTotal,
       split: paymentMethod === "SPLIT" ? { cash: splitCash, gpay: splitGpay, card: splitCard } : undefined,
+      deliveryFee,
+      discountType: discountType === "percent" ? "PERCENT" : "FIXED",
+      discountValue,
     };
 
     const phoneToSave = customerPhone ? `${customerPhone}_${paymentMethod}` : `_${paymentMethod}`;
@@ -865,30 +874,28 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
     const domain = typeof window !== "undefined" ? window.location.origin : "";
     const invoiceUrl = `${domain}/pos2/invoice/${snap.id}`;
 
-    const shopEmoji = String.fromCodePoint(0x2728);
-    const checkEmoji = String.fromCodePoint(0x2705);
-    const moneyEmoji = String.fromCodePoint(0x1f4b0);
-    const receiptEmoji = String.fromCodePoint(0x1f4e6);
-
-    let message = `${shopEmoji} *${shop.shopName}* ${shopEmoji}\n\n`;
-    message += `${checkEmoji} Here are your invoice details!\n\n`;
-
-    message += `*Subtotal:* ₹${snap.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
-    if (snap.discount > 0) {
-      message += `*Discount Applied:* -₹${snap.discount.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
-    }
-    if (snap.applyGST && snap.gstAmount > 0) {
-      message += `*GST (${snap.gstPercentage}%):* ₹${snap.gstAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
-    }
-
-    message += `\n${moneyEmoji} *Total Amount:* ₹${snap.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
-    
-    if (snap.paymentMethod) {
-      const modeEmoji = snap.paymentMethod === "CASH" ? "💵" : snap.paymentMethod === "CARD" ? "💳" : "📱";
-      const modeText = snap.paymentMethod === "GPAY" ? "GPay (UPI)" : snap.paymentMethod === "CARD" ? "Card" : snap.paymentMethod === "SPLIT" ? "Split" : "Cash";
-      message += `${modeEmoji} *Payment Mode:* ${modeText}\n`;
-    }
-    message += `\n${receiptEmoji} View and download your detailed digital receipt here:\n${invoiceUrl}`;
+    const message = billMessage({
+      shopName: shop.shopName,
+      id: snap.id,
+      isGst: snap.applyGST && snap.gstAmount > 0,
+      items: snap.items,
+      subtotal: snap.subtotal,
+      discount: snap.discount,
+      discountType: snap.discountType,
+      discountValue: snap.discountValue,
+      gstPercentage: snap.applyGST ? snap.gstPercentage : 0,
+      gstAmount: snap.applyGST ? snap.gstAmount : 0,
+      deliveryFee: snap.deliveryFee,
+      grandTotal: snap.grandTotal,
+      paymentMode: snap.paymentMethod ?? "CASH",
+      split: snap.split ?? {
+        cash: snap.paymentMethod === "CASH" ? snap.grandTotal : 0,
+        gpay: snap.paymentMethod === "GPAY" ? snap.grandTotal : 0,
+        card: snap.paymentMethod === "CARD" ? snap.grandTotal : 0,
+      },
+      amountReceived: snap.amountReceived,
+      link: invoiceUrl,
+    });
 
     const encodedMessage = encodeURIComponent(message);
     const whatsappUrl = `https://api.whatsapp.com/send/?phone=91${cleanPhone}&text=${encodedMessage}`;
@@ -1441,30 +1448,26 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
     const domain = window.location.origin;
     const invoiceUrl = `${domain}/pos2/invoice/${order.id}`;
 
-    const shopEmoji = String.fromCodePoint(0x2728);
-    const checkEmoji = String.fromCodePoint(0x2705);
-    const tagEmoji = String.fromCodePoint(0x1F516);
-    const moneyEmoji = String.fromCodePoint(0x1F4B0);
-    const receiptEmoji = String.fromCodePoint(0x1F4E6);
-
-    let message = `${shopEmoji} *${shop.shopName}* ${shopEmoji}\n\n`;
-    message += `${checkEmoji} Here are your invoice details!\n\n`;
-    
-    message += `*Subtotal:* ₹${order.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
-    if (order.discount > 0) {
-      message += `*Discount Applied:* -₹${order.discount.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
-    }
-    
-    const gstItem = order.items.find(i => i.name && i.name.startsWith("GST"));
-    const calculatedGst = order.grandTotal - (order.subtotal - order.discount + order.deliveryFee);
-    
-    if (calculatedGst > 0.1) {
-      const gstLabel = gstItem ? gstItem.name : "GST";
-      message += `*${gstLabel}:* ₹${calculatedGst.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
-    }
-    
-    message += `\n${moneyEmoji} *Total Amount:* ₹${order.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n\n`;
-    message += `${receiptEmoji} View and download your detailed digital receipt here:\n${invoiceUrl}`;
+    const gstItem = order.items.find((i) => i.name?.startsWith("GST ("));
+    const message = billMessage({
+      shopName: shop.shopName,
+      id: order.id,
+      isGst: Boolean(gstItem),
+      items: order.items.filter((i) => !i.name?.startsWith("GST (")).map((i) => ({ name: i.name, qty: i.qty, price: i.price })),
+      subtotal: order.subtotal,
+      discount: order.discount,
+      discountType: order.discountType,
+      discountValue: order.discountValue,
+      gstPercentage: gstItem ? parseFloat(gstItem.name.replace(/[^0-9.]/g, "")) || 0 : 0,
+      gstAmount: gstItem ? gstItem.price * gstItem.qty : 0,
+      deliveryFee: order.deliveryFee,
+      grandTotal: order.grandTotal,
+      paymentMode: order.paymentMethod ?? "CASH",
+      split: { cash: order.splitCash ?? 0, gpay: order.splitGpay ?? 0, card: order.splitCard ?? 0 },
+      advancePaid: order.advancePaid,
+      advanceOrderId: order.advanceOrderId,
+      link: invoiceUrl,
+    });
 
     const encodedMessage = encodeURIComponent(message);
     let whatsappUrl = `https://api.whatsapp.com/send/?phone=91${order.customerPhone.split('_')[0]}&text=${encodedMessage}`;

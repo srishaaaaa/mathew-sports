@@ -27,6 +27,7 @@ import {
 } from "@/lib/payments";
 import PaymentPicker, { initialPayState, payStateError, splitParts, splitTotal, type PayState } from "./payment-picker";
 import BillGeneratedModal from "@/app/_terminals/bill-generated-modal";
+import { advanceMessage } from "@/lib/whatsapp-message";
 import { PrintSettingsModal, fmtDate, inr, shareOnWhatsApp, type AdvanceActions, type AdvanceBranch } from "./shared";
 
 type Period = "all" | "today" | "week" | "month" | "year" | "custom";
@@ -144,17 +145,7 @@ export default function AdvanceOrdersPanel({
   };
 
   const whatsapp = (o: AdvanceOrder) =>
-    shareOnWhatsApp(o.customer_phone, [
-      `✨ *${branch.shopName}* ✨`,
-      "",
-      o.status === "COMPLETED" ? `Advance order *${o.id}* — paid in full. Thank you!` : `Advance order *${o.id}*`,
-      `Order total: ${inr(o.total_amount)}`,
-      `Paid so far: ${inr(o.payments.reduce((t, p) => t + p.amount, 0))}`,
-      o.status === "COMPLETED" ? "" : `*Balance due: ${inr(balanceDue(o))}*`,
-      o.delivery_date ? `Delivery: ${fmtDate(o.delivery_date)}` : "",
-      "",
-      `Receipt: ${window.location.origin}${branch.receiptBase}/${o.id}`,
-    ].filter(Boolean));
+    shareOnWhatsApp(o.customer_phone, advanceMessage(o, branch.shopName, `${window.location.origin}${branch.receiptBase}/${o.id}`).split("\n"));
 
   return (
     <div className="flex-1 flex flex-col max-w-[1400px] mx-auto w-full pb-8 pr-2 animate-in fade-in duration-300">
@@ -649,15 +640,32 @@ function ReceiveBalanceModal({
         onPrint={() => onPrintUrl(invoiceUrl)}
         onView={() => onView(invoiceUrl)}
         onWhatsApp={(phone) =>
-          shareOnWhatsApp(phone, [
-            `✨ *${branch.shopName}* ✨`,
-            "",
-            `Advance order *${o.id}* — paid in full. Thank you!`,
-            `Invoice: ${done}`,
-            `Total: ${inr(o.deposit_amount + disc.payable)} (advance ${inr(o.deposit_amount)} + balance ${inr(disc.payable)})`,
-            "",
-            `View invoice: ${window.location.origin}${invoiceUrl}`,
-          ])
+          shareOnWhatsApp(
+            phone,
+            advanceMessage(
+              {
+                ...o,
+                status: "COMPLETED",
+                finalized_order_id: done,
+                payments: [
+                  ...o.payments,
+                  {
+                    kind: "BALANCE",
+                    at: new Date().toISOString(),
+                    mode: pay.mode,
+                    cash: parts ? parts.CASH ?? 0 : pay.mode === "CASH" ? disc.payable : 0,
+                    gpay: parts ? parts.GPAY ?? 0 : pay.mode === "GPAY" ? disc.payable : 0,
+                    card: parts ? parts.CARD ?? 0 : pay.mode === "CARD" ? disc.payable : 0,
+                    amount: disc.payable,
+                    manual_discount: disc.manualAmt,
+                  },
+                ],
+              },
+              branch.shopName,
+              `${window.location.origin}${invoiceUrl}`,
+              done,
+            ).split("\n"),
+          )
         }
         onNewSale={onClose}
         newSaleLabel="Done"

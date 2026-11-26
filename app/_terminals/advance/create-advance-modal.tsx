@@ -4,7 +4,8 @@ import { useState } from "react";
 import { CheckCircle2, Clock, Loader2, MessageCircle, Plus, Printer, X } from "lucide-react";
 import { balanceDue, cgstSgst, describePayment, round2, type AdvanceItem, type AdvanceOrder } from "@/lib/payments";
 import PaymentPicker, { initialPayState, payStateError, splitParts, type PayState } from "./payment-picker";
-import { PrintSettingsModal, fmtDate, inr, shareOnWhatsApp, type AdvanceActions, type AdvanceBranch } from "./shared";
+import { advanceMessage } from "@/lib/whatsapp-message";
+import { PrintSettingsModal, inr, shareOnWhatsApp, type AdvanceActions, type AdvanceBranch } from "./shared";
 
 export type AdvanceCart = {
   customerName: string;
@@ -85,17 +86,7 @@ export default function CreateAdvanceModal({
 
   const whatsapp = () => {
     if (!saved) return;
-    shareOnWhatsApp(saved.customer_phone, [
-      `✨ *${branch.shopName}* ✨`,
-      "",
-      `Advance order *${saved.id}* confirmed.`,
-      `Order total: ${inr(saved.total_amount)}`,
-      `Deposit paid: ${inr(saved.deposit_amount)} (${describePayment(saved.payments[0])})`,
-      `*Balance due: ${inr(balanceDue(saved))}*`,
-      saved.delivery_date ? `Delivery: ${fmtDate(saved.delivery_date)}` : "",
-      "",
-      `Receipt: ${window.location.origin}${receiptUrl}`,
-    ].filter((l, i, a) => l !== "" || a[i - 1] !== ""));
+    shareOnWhatsApp(saved.customer_phone, advanceMessage(saved, branch.shopName, `${window.location.origin}${receiptUrl}`).split("\n"));
   };
 
   return (

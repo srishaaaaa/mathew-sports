@@ -44,7 +44,36 @@ function Opt({ active, onClick, children }: { active: boolean; onClick: () => vo
   );
 }
 
-/** Printer choice → opens the receipt in that format and prints it. */
+/**
+ * Prints a receipt/invoice page without leaving the current screen: loads it
+ * in a hidden frame and opens the print dialog right here. No new tab, so
+ * pop-up blockers and installed-app windows can't get in the way.
+ */
+export function printInPlace(target: string) {
+  document.getElementById("pos-print-frame")?.remove();
+  const frame = document.createElement("iframe");
+  frame.id = "pos-print-frame";
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
+  frame.onload = () => {
+    const w = frame.contentWindow;
+    if (!w) return;
+    // give the logo and fonts a moment, then print
+    setTimeout(() => {
+      try {
+        w.focus();
+        w.print();
+      } catch {
+        window.open(target, "_blank"); // last resort
+      }
+    }, 500);
+    w.addEventListener("afterprint", () => setTimeout(() => frame.remove(), 1000));
+  };
+  frame.src = target;
+  document.body.appendChild(frame);
+}
+
+/** Printer choice → prints the receipt in that format. */
 export function PrintSettingsModal({ url, onClose, sameTab = false }: { url: string; onClose: () => void; sameTab?: boolean }) {
   const [kind, setKind] = useState<"thermal" | "sheet">(() =>
     typeof window !== "undefined" && localStorage.getItem("print_kind") === "sheet" ? "sheet" : "thermal",
@@ -58,9 +87,13 @@ export function PrintSettingsModal({ url, onClose, sameTab = false }: { url: str
   const print = () => {
     localStorage.setItem("print_kind", kind);
     localStorage.setItem("print_format", effective);
-    const target = `${url}${url.includes("?") ? "&" : "?"}format=${effective}&print=1`;
-    if (sameTab) window.location.assign(target);
-    else window.open(target, "_blank");
+    const sep = url.includes("?") ? "&" : "?";
+    if (sameTab) {
+      // Already on the receipt page: reload it in the chosen format and print.
+      window.location.assign(`${url}${sep}format=${effective}&print=1`);
+    } else {
+      printInPlace(`${url}${sep}format=${effective}`);
+    }
     onClose();
   };
 

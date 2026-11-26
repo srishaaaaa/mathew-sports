@@ -44,13 +44,6 @@ const inr = (n: number) =>
   "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const inrShort = (n: number) =>
   "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
-const timeAgo = (iso: string) => {
-  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-};
 
 export default function AdminPanel({ adminName }: { adminName: string }) {
   const [view, setView] = useState<View>("overview");
@@ -428,30 +421,6 @@ function BranchCard({ b }: { b: BranchOverview }) {
             </p>
           ))}
         </div>
-      </div>
-
-      {/* Recent invoices */}
-      <div className="flex-1">
-        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-black/50 mb-2">Recent invoices</p>
-        {b.recent.length === 0 ? (
-          <p className="text-sm text-black/40 font-medium py-4 text-center rounded-2xl border border-dashed border-black/10">
-            No invoices yet — they&apos;ll appear here as soon as {b.shopName} bills a sale.
-          </p>
-        ) : (
-          <ul className="divide-y divide-black/5">
-            {b.recent.slice(0, 5).map((o) => (
-              <li key={o.id}>
-                <a href={`${b.invoiceBase}/${o.id}`} target="_blank" rel="noreferrer" className="flex items-center gap-3 py-2.5 group">
-                  <span className="text-xs font-black tabular-nums text-black/70 group-hover:text-black">{o.id}</span>
-                  <span className="text-xs font-medium text-black/45 truncate">{o.customer}</span>
-                  {o.online && <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-black/5 text-black/50">Online</span>}
-                  <span className="ml-auto text-xs font-black tabular-nums">{inr(o.total)}</span>
-                  <span className="w-14 text-right text-[10px] font-semibold text-black/40">{timeAgo(o.createdAt)}</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
 
       <a
