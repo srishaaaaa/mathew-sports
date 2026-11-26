@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { getSession, homeFor } from "@/lib/session";
+import { canUseBranch, getSession, homeFor } from "@/lib/session";
 import { getThemeId } from "@/lib/settings";
 import { getShopProfile, type ShopProfile } from "@/lib/shop";
 import { BRANCH as POS1 } from "@/lib/branches/pos1";
@@ -18,10 +18,19 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ branch?: string; mode?: string }>;
 }) {
-  const session = await getSession();
-  if (session) redirect(homeFor(session));
+  const [session, { branch, mode }] = await Promise.all([getSession(), searchParams]);
 
-  const { branch, mode } = await searchParams;
+  // Already signed in:
+  //  - plain /login → straight to your own home;
+  //  - asked for a branch (or admin) you can already open → go there;
+  //  - asked for a branch you can't open (e.g. Matthew Sports staff opening
+  //    Vybe Girl) → show the login form so you can switch accounts.
+  if (session) {
+    const wanted = branch === "pos1" || branch === "pos2" ? branch : null;
+    if (!wanted && mode !== "admin") redirect(homeFor(session));
+    if (wanted && canUseBranch(session, wanted)) redirect(wanted === "pos2" ? "/pos2" : "/pos1");
+    if (mode === "admin" && session.role === "admin") redirect("/admin");
+  }
   const [t1, t2, s1, s2] = await Promise.all([getThemeId("pos1"), getThemeId("pos2"), getShopProfile("pos1"), getShopProfile("pos2")]);
 
   const branches: LoginBranch[] = [
