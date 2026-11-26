@@ -85,7 +85,7 @@ const ADVANCE_ACTIONS: AdvanceActions = {
 import { useBranchTheme } from "@/app/components/branch-theme";
 import SettingsModal, { type SettingsActions } from "@/app/_terminals/settings/settings-modal";
 import type { ShopProfile } from "@/lib/shop";
-import { Palette, LayoutDashboard, Clock as ClockIcon, Wallet, Check as CheckIcon, Eye as EyeIcon } from "lucide-react";
+import { Palette, LayoutDashboard, Clock as ClockIcon, Wallet, Check as CheckIcon, Eye as EyeIcon, Percent as PercentIcon, CalendarDays as CalendarIcon, Search as SearchIcon } from "lucide-react";
 import OrderDetailsModal from "@/app/_terminals/order-details-modal";
 import BillGeneratedModal from "@/app/_terminals/bill-generated-modal";
 import { PrintSettingsModal } from "@/app/_terminals/advance/shared";
@@ -399,10 +399,12 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
     new Date().toISOString().split("T")[0],
   );
   const [analyticsSubTab, setAnalyticsSubTab] = useState<
-    "revenue" | "today" | "products"
+    "revenue" | "today" | "products" | "coupons"
   >("revenue");
   const [analyticsSearchPhone, setAnalyticsSearchPhone] = useState("");
   const [productSearchQuery, setProductSearchQuery] = useState("");
+  // Analytics → Coupons (discount report, as in IGMOLS)
+  const [couponSearchQuery, setCouponSearchQuery] = useState("");
 
   useEffect(() => {
     setIsMounted(true);
@@ -2899,7 +2901,7 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
 
             {/* Sub Navigation Tabs */}
             <div className="flex border-b border-black/10 mb-6 gap-6 overflow-x-auto scrollbar-none pb-0.5 w-full shrink-0">
-              {(["revenue", "today", "products"] as const).map(
+              {(["revenue", "today", "products", "coupons"] as const).map(
                 (tab) => {
                   const isActive = analyticsSubTab === tab;
                   const displayLabel =
@@ -3614,6 +3616,98 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
                 </div>
               </>
             )}
+
+            {analyticsSubTab === "coupons" && (() => {
+              // Discount report (IGMOLS "Coupons"): every bill with a discount.
+              const discounted = analyticsFilteredOrders.filter((o) => o.discount > 0);
+              const totalDiscount = discounted.reduce((acc, o) => acc + o.discount, 0);
+              const q = couponSearchQuery.trim().toLowerCase();
+              const rows = discounted.filter(
+                (o) =>
+                  !q ||
+                  o.id.toLowerCase().includes(q) ||
+                  (o.customerPhone || "").includes(q) ||
+                  o.discount.toString().includes(q) ||
+                  o.grandTotal.toString().includes(q),
+              );
+              const money = (v: number) => "₹" + v.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+              return (
+                <div className="flex flex-col lg:grid lg:grid-cols-3 gap-6">
+                  <div className="col-span-1 w-full bg-white border border-black/10 rounded-xl p-6 shadow-sm flex flex-col gap-6">
+                    <h3 className="font-bold text-[#000000] text-sm">Discount Summary</h3>
+                    <div className="p-4 bg-[#FFFFFF] border border-black/10 rounded-lg">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#000000]">Total Discounts Given</span>
+                        <PercentIcon className="w-4 h-4 text-[var(--brand-primary)]" />
+                      </div>
+                      <span className="text-2xl font-black text-[var(--brand-primary)]">{money(totalDiscount)}</span>
+                    </div>
+                    <div className="p-4 bg-[#FFFFFF] border border-black/10 rounded-lg">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#000000]">Discounted Orders</span>
+                        <CalendarIcon className="w-4 h-4 text-black/50" />
+                      </div>
+                      <span className="text-2xl font-black text-[#000000]">{discounted.length}</span>
+                    </div>
+                    <div className="p-4 bg-[#FFFFFF] border border-black/10 rounded-lg">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#000000]">Avg Discount Per Order</span>
+                        <IndianRupee className="w-4 h-4 text-[#10B981]" />
+                      </div>
+                      <span className="text-2xl font-black text-[#000000]">{money(Math.round(discounted.length ? totalDiscount / discounted.length : 0))}</span>
+                    </div>
+                  </div>
+
+                  <div className="col-span-2 w-full bg-white border border-black/10 rounded-xl p-6 shadow-sm">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                      <h3 className="font-bold text-[#000000] text-sm">Promo Campaign Performance</h3>
+                      <div className="flex items-center border border-black/10 bg-[#FFFFFF] rounded-lg px-3 py-1.5 gap-2 shadow-xs w-full sm:w-auto">
+                        <SearchIcon className="w-3.5 h-3.5 text-[#000000]" />
+                        <input
+                          type="text"
+                          placeholder="Search bill/mobile/amount..."
+                          className="text-xs font-semibold bg-transparent border-none outline-none focus:ring-0 text-[#000000] placeholder:text-[#000000]/50 w-full sm:w-[220px]"
+                          value={couponSearchQuery}
+                          onChange={(e) => setCouponSearchQuery(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    {discounted.length === 0 ? (
+                      <div className="text-center text-[#000000] text-sm font-semibold py-12">No discounts given in this period.</div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-[#FFFFFF] border-b border-black/10">
+                              <th className="p-3 text-[10px] font-bold text-[#000000] uppercase tracking-wider">Transaction ID</th>
+                              <th className="p-3 text-[10px] font-bold text-[#000000] uppercase tracking-wider">Customer Mobile</th>
+                              <th className="p-3 text-[10px] font-bold text-[#000000] uppercase tracking-wider text-right">Order Total</th>
+                              <th className="p-3 text-[10px] font-bold text-[#000000] uppercase tracking-wider text-right">Discount Applied</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.length === 0 ? (
+                              <tr>
+                                <td colSpan={4} className="text-center py-12 text-sm font-semibold text-[#000000]">No matching discounted bills found.</td>
+                              </tr>
+                            ) : (
+                              rows.map((order) => (
+                                <tr key={order.id} className="border-b border-transparent hover:bg-black/[0.02] transition-colors">
+                                  <td className="p-3 text-xs font-semibold text-[#000000]">{order.id}</td>
+                                  <td className="p-3 text-xs font-mono font-bold text-[#000000]">{order.customerPhone || "-"}</td>
+                                  <td className="p-3 text-xs font-bold text-right text-[#000000]">{money(order.grandTotal)}</td>
+                                  <td className="p-3 text-xs font-black text-[#27272A] text-right">-{money(order.discount)}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {analyticsSubTab === "products" && (
               <div className="bg-white border border-black/10 rounded-xl p-6 shadow-sm">
