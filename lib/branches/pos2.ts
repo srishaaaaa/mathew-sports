@@ -24,6 +24,7 @@ export const BRANCH: BranchConfig = {
   // Branch 2's own files — never shared with Branch 1.
   logo: "/pos2/logo.png",
   logoMark: "/pos2/logo.png",
+  logoOnLight: "/pos2/logo-light.png",
   logoBackground: "#FCF3EA",
   icons: {
     icon192: "/pos2/icon-192.png",

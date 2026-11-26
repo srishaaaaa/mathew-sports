@@ -18,6 +18,8 @@ export type ShopProfile = {
   logo: string;
   /** Square logo for tiles (same as `logo` once a custom logo is uploaded). */
   logoMark: string;
+  /** Logo for white paper — invoices and A4/A5 receipts. */
+  logoOnLight: string;
   logoBackground: string;
 };
 
@@ -51,6 +53,7 @@ export function defaultProfile(branch: BranchId): ShopProfile {
     instagram: b.instagram,
     logo: b.logo,
     logoMark: b.logoMark,
+    logoOnLight: b.logoOnLight,
     logoBackground: b.logoBackground,
   };
 }
@@ -62,7 +65,10 @@ export function applyOverrides(base: ShopProfile, o: ProfileOverrides): ShopProf
     if (typeof v === "string") out[k] = v;
   }
   // An uploaded logo replaces both the full logo and the square mark.
-  if (o.logo) out.logoMark = o.logo;
+  if (o.logo) {
+    out.logoMark = o.logo;
+    out.logoOnLight = o.logo;
+  }
   if (!out.shopName.trim()) out.shopName = base.shopName;
   return out;
 }

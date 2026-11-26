@@ -47,8 +47,8 @@ export default function AdvanceReceipt({
       : []),
     ...(o.is_gst
       ? ([
-          [`CGST @ ${g.rate}%`, inr(g.amount)],
-          [`SGST @ ${g.rate}%`, inr(g.amount)],
+          [`CGST @ ${g.rate}%`, inr(g.cgst)],
+          [`SGST @ ${g.rate}%`, inr(g.sgst)],
         ] as [string, string][])
       : []),
     ...(o.delivery_fee > 0 ? [["Delivery", inr(o.delivery_fee)] as [string, string]] : []),
@@ -121,9 +121,9 @@ export default function AdvanceReceipt({
         <div className={`w-full ${PAGE[format].width} bg-white text-black rounded-2xl print:rounded-none border border-black/10 print:border-0 shadow-xl print:shadow-none ${format === "a5" ? "p-6 text-[11px]" : "p-10 text-sm"}`}>
           <div className="flex flex-wrap items-start justify-between gap-6 pb-5 border-b-2 border-[var(--brand-primary)]">
             <div className="flex items-start gap-4 min-w-0">
-              <div className={`${format === "a5" ? "w-14 h-14" : "w-20 h-20"} rounded-xl overflow-hidden shrink-0 border border-black/10 print:[print-color-adjust:exact]`} style={{ backgroundColor: shop.logoBackground }}>
+              <div className={`${format === "a5" ? "h-14 max-w-[140px]" : "h-20 max-w-[200px]"} shrink-0 flex items-center`}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={shop.logoMark} alt={`${shop.shopName} logo`} className="w-full h-full object-contain" />
+                <img src={shop.logoOnLight} alt={`${shop.shopName} logo`} className="max-h-full max-w-full object-contain" />
               </div>
               <div className="min-w-0">
                 <h1 className={`${format === "a5" ? "text-lg" : "text-2xl"} font-black text-[var(--brand-primary-dark)] uppercase tracking-tight`}>{shop.shopName}</h1>

@@ -22,6 +22,7 @@ export const BRANCH: BranchConfig = {
 
   logo: "/logo.png",
   logoMark: "/logo-mark.png",
+  logoOnLight: "/logo-light.png",
   logoBackground: "#030408",
   icons: {
     icon192: "/icon-192.png",

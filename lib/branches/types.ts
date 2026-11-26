@@ -39,6 +39,8 @@ export type BranchConfig = {
   logo: string;
   /** Square version of the logo for tiles and thumbnails. */
   logoMark: string;
+  /** Logo for white paper (invoices/receipts): no backdrop needed. */
+  logoOnLight: string;
   /** Backdrop behind the logo wherever it sits in a tile (matches the artwork). */
   logoBackground: string;
   icons: { icon192: string; icon512: string; maskable512: string; apple: string };

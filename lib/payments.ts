@@ -108,8 +108,11 @@ export function sumPayments(payments: Pick<Payment, "cash" | "gpay" | "card" | "
   );
 }
 
-/** Half-and-half CGST/SGST split of a GST amount, for display. */
-export const cgstSgst = (gstPercentage: number, gstAmount: number) => ({
-  rate: round2(gstPercentage / 2),
-  amount: round2(gstAmount / 2),
-});
+/**
+ * CGST/SGST split of a GST amount: half the rate each; CGST is rounded and
+ * SGST takes the remainder so the two always add up to the GST total.
+ */
+export const cgstSgst = (gstPercentage: number, gstAmount: number) => {
+  const cgst = round2(gstAmount / 2);
+  return { rate: round2(gstPercentage / 2), cgst, sgst: round2(gstAmount - cgst) };
+};

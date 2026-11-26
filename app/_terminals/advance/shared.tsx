@@ -45,7 +45,7 @@ function Opt({ active, onClick, children }: { active: boolean; onClick: () => vo
 }
 
 /** Printer choice → opens the receipt in that format and prints it. */
-export function PrintSettingsModal({ url, onClose }: { url: string; onClose: () => void }) {
+export function PrintSettingsModal({ url, onClose, sameTab = false }: { url: string; onClose: () => void; sameTab?: boolean }) {
   const [kind, setKind] = useState<"thermal" | "sheet">(() =>
     typeof window !== "undefined" && localStorage.getItem("print_kind") === "sheet" ? "sheet" : "thermal",
   );
@@ -58,12 +58,14 @@ export function PrintSettingsModal({ url, onClose }: { url: string; onClose: () 
   const print = () => {
     localStorage.setItem("print_kind", kind);
     localStorage.setItem("print_format", effective);
-    window.open(`${url}${url.includes("?") ? "&" : "?"}format=${effective}&print=1`, "_blank");
+    const target = `${url}${url.includes("?") ? "&" : "?"}format=${effective}&print=1`;
+    if (sameTab) window.location.assign(target);
+    else window.open(target, "_blank");
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[500] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 bg-[#141414] text-white">
           <p className="flex items-center gap-2 text-sm font-black uppercase tracking-wider">

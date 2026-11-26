@@ -61,11 +61,11 @@ import {
   cancelAdvanceOrderAction,
   deleteAdvanceOrderAction,
 } from "@/app/pos2/actions";
-import PaymentPicker, { initialPayState, payStateError, splitParts, type PayState } from "@/app/_terminals/advance/payment-picker";
+import PaymentPicker, { initialPayState, payStateError, splitParts, splitTotal, type PayState } from "@/app/_terminals/advance/payment-picker";
 import AdvanceOrdersPanel from "@/app/_terminals/advance/advance-orders-panel";
 import CreateAdvanceModal, { type AdvanceCart } from "@/app/_terminals/advance/create-advance-modal";
 import type { AdvanceActions } from "@/app/_terminals/advance/shared";
-import { round2, type PaymentMode } from "@/lib/payments";
+import { cgstSgst, round2, type PaymentMode } from "@/lib/payments";
 
 // Settings → store details for this branch.
 const SETTINGS_ACTIONS: SettingsActions = {
@@ -87,6 +87,8 @@ import SettingsModal, { type SettingsActions } from "@/app/_terminals/settings/s
 import type { ShopProfile } from "@/lib/shop";
 import { Palette, LayoutDashboard, Clock as ClockIcon, Wallet, Check as CheckIcon, Eye as EyeIcon } from "lucide-react";
 import OrderDetailsModal from "@/app/_terminals/order-details-modal";
+import BillGeneratedModal from "@/app/_terminals/bill-generated-modal";
+import { PrintSettingsModal } from "@/app/_terminals/advance/shared";
 
 type CatalogItem = {
   id: string;
@@ -533,6 +535,7 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
   } | null>(null);
   const [promptPhone, setPromptPhone] = useState("");
   const [showPromptPhoneInput, setShowPromptPhoneInput] = useState(false);
+  const [billPrintUrl, setBillPrintUrl] = useState<string | null>(null);
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
 
@@ -692,6 +695,10 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
     gstAmount: number;
     grandTotal: number;
     paymentMethod?: PaymentMode;
+    // For the "Bill Generated" screen
+    items: { name: string; qty: number; price: number }[];
+    amountReceived: number;
+    split?: { cash: number; gpay: number; card: number };
   };
 
   // Validates the current cart, writes the order to the database, updates local
@@ -737,6 +744,14 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
       gstAmount,
       grandTotal,
       paymentMethod,
+      items: items.filter((i) => i.name).map((i) => ({ name: i.name, qty: i.qty, price: i.price })),
+      amountReceived:
+        paymentMethod === "CASH"
+          ? cashReceived > 0 ? cashReceived : grandTotal
+          : paymentMethod === "SPLIT"
+            ? splitTotal(splitPay)
+            : grandTotal,
+      split: paymentMethod === "SPLIT" ? { cash: splitCash, gpay: splitGpay, card: splitCard } : undefined,
     };
 
     const phoneToSave = customerPhone ? `${customerPhone}_${paymentMethod}` : `_${paymentMethod}`;
@@ -2280,6 +2295,21 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
                               ₹{gstAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </span>
                           </div>
+                        </div>
+                      )}
+                      {/* GST split-up: CGST + SGST, half each */}
+                      {applyGST && gstPercentage > 0 && (
+                        <div className="rounded-lg bg-[var(--brand-tint)]/50 border border-black/5 px-3 py-2 space-y-1">
+                          {(["CGST", "SGST"] as const).map((k) => (
+                            <div key={k} className="flex justify-between items-center text-[11px] font-semibold text-[#000000]">
+                              <span>
+                                {k} <span className="text-[var(--brand-primary-dark)] font-bold">@ {round2(gstPercentage / 2)}%</span>
+                              </span>
+                              <span className="font-bold">
+                                ₹{(k === "CGST" ? cgstSgst(gstPercentage, gstAmount).cgst : cgstSgst(gstPercentage, gstAmount).sgst).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -3859,160 +3889,33 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
         </footer>
       </main>
 
-      {/* "Receipt or WhatsApp?" Modal after Complete Sale */}
-      {saleCompletedPrompt && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[250] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-black/10 overflow-hidden transform scale-100 animate-in zoom-in-95 duration-200">
-            {/* Modal Header */}
-            <div className="bg-[var(--brand-surface)] p-6 border-b border-black/10 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#10B981]/15 text-[#059669] flex items-center justify-center">
-                  <ShieldCheck className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="font-black text-base text-[#000000] tracking-tight">
-                    Sale Completed!
-                  </h3>
-                  <p className="text-xs font-semibold text-[var(--brand-text-muted)]">
-                    Order #{saleCompletedPrompt.orderId} &middot; ₹{saleCompletedPrompt.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setSaleCompletedPrompt(null);
-                  setShowPromptPhoneInput(false);
-                }}
-                className="w-8 h-8 rounded-lg bg-black/5 hover:bg-black/10 flex items-center justify-center text-[#000000] transition-colors cursor-pointer"
-                title="Close"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 space-y-6">
-              <div className="text-center">
-                <h4 className="text-lg font-black text-[#000000] tracking-tight">
-                  Receipt or WhatsApp?
-                </h4>
-                <p className="text-xs text-[var(--brand-text-muted)] font-semibold mt-1">
-                  Choose how you would like to issue the bill to the customer
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Option 1: Receipt */}
-                <button
-                  onClick={() => {
-                    const orderId = saleCompletedPrompt.orderId;
-                    setSaleCompletedPrompt(null);
-                    setShowPromptPhoneInput(false);
-                    setActiveInvoiceId(orderId);
-                  }}
-                  className="group flex flex-col items-center justify-center p-5 rounded-xl border-2 border-black/10 hover:border-[var(--brand-primary)] bg-[#FFFFFF] hover:bg-[var(--brand-primary)]/5 transition-all text-center cursor-pointer shadow-xs"
-                >
-                  <div className="w-12 h-12 rounded-full bg-[var(--brand-primary)]/10 text-[var(--brand-primary)] group-hover:bg-[var(--brand-primary)] group-hover:text-[var(--brand-on-primary)] flex items-center justify-center transition-colors mb-3">
-                    <Printer className="w-6 h-6" />
-                  </div>
-                  <span className="font-black text-sm text-[#000000] group-hover:text-[var(--brand-primary)] uppercase tracking-wider">
-                    Receipt
-                  </span>
-                  <span className="text-[11px] font-semibold text-[var(--brand-text-muted)] mt-1">
-                    Print or view detailed paper / digital receipt
-                  </span>
-                </button>
-
-                {/* Option 2: WhatsApp */}
-                <button
-                  onClick={() => {
-                    if (saleCompletedPrompt.customerPhone && saleCompletedPrompt.customerPhone.length === 10) {
-                      sendWhatsAppForSnapshot(
-                        saleCompletedPrompt.orderSnapshot,
-                        saleCompletedPrompt.customerPhone,
-                      );
-                      setSaleCompletedPrompt(null);
-                      setShowPromptPhoneInput(false);
-                    } else {
-                      setShowPromptPhoneInput(true);
-                    }
-                  }}
-                  className="group flex flex-col items-center justify-center p-5 rounded-xl border-2 border-black/10 hover:border-[#10B981] bg-[#FFFFFF] hover:bg-[#10B981]/5 transition-all text-center cursor-pointer shadow-xs"
-                >
-                  <div className="w-12 h-12 rounded-full bg-[#10B981]/10 text-[#10B981] group-hover:bg-[#10B981] group-hover:text-white flex items-center justify-center transition-colors mb-3">
-                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.012c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z" />
-                    </svg>
-                  </div>
-                  <span className="font-black text-sm text-[#000000] group-hover:text-[#10B981] uppercase tracking-wider">
-                    WhatsApp
-                  </span>
-                  <span className="text-[11px] font-semibold text-[var(--brand-text-muted)] mt-1">
-                    {saleCompletedPrompt.customerPhone && saleCompletedPrompt.customerPhone.length === 10
-                      ? `Send to +91 ${saleCompletedPrompt.customerPhone}`
-                      : "Send bill via WhatsApp"}
-                  </span>
-                </button>
-              </div>
-
-              {/* Inline WhatsApp Phone Input */}
-              {showPromptPhoneInput && (
-                <div className="bg-[var(--brand-surface)] border border-black/10 rounded-xl p-4 space-y-3 animate-in fade-in duration-150">
-                  <label className="block text-[11px] font-bold text-[#000000] uppercase tracking-wider">
-                    Enter WhatsApp Mobile Number:
-                  </label>
-                  <div className="flex gap-2">
-                    <div className="flex items-center bg-white border border-black/10 rounded-lg px-3 text-xs font-bold text-[var(--brand-text-muted)]">
-                      +91
-                    </div>
-                    <input
-                      type="tel"
-                      maxLength={10}
-                      placeholder="10-digit number"
-                      className="flex-1 bg-white border border-black/10 focus:border-[#10B981] rounded-lg px-3 py-2 text-xs font-bold text-[#000000] focus:outline-none"
-                      value={promptPhone}
-                      onChange={(e) => setPromptPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => {
-                        if (!promptPhone || promptPhone.length !== 10) {
-                          alert("Please enter a valid 10-digit mobile number.");
-                          return;
-                        }
-                        sendWhatsAppForSnapshot(saleCompletedPrompt.orderSnapshot, promptPhone);
-                        setSaleCompletedPrompt(null);
-                        setShowPromptPhoneInput(false);
-                      }}
-                      disabled={promptPhone.length !== 10}
-                      className="bg-[#10B981] hover:bg-[#059669] text-white px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50 cursor-pointer shrink-0"
-                    >
-                      Send Bill
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Bottom dismiss button */}
-              <div className="pt-2 border-t border-black/10 flex justify-end">
-                <button
-                  onClick={() => {
-                    setSaleCompletedPrompt(null);
-                    setShowPromptPhoneInput(false);
-                  }}
-                  className="w-full sm:w-auto px-6 py-2.5 bg-black/5 hover:bg-black/10 text-[#000000] font-bold text-xs rounded-lg uppercase tracking-wider transition-colors cursor-pointer"
-                >
-                  Done / Next Sale
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* "Bill Generated" after Complete Sale */}
+      {saleCompletedPrompt && (() => {
+        const snap = saleCompletedPrompt.orderSnapshot;
+        return (
+          <BillGeneratedModal
+            bill={{
+              id: snap.id,
+              isGst: snap.applyGST && snap.gstAmount > 0,
+              paymentMethod: snap.paymentMethod ?? "CASH",
+              grandTotal: snap.grandTotal,
+              amountReceived: snap.amountReceived,
+              split: snap.split,
+              items: snap.items,
+              customerPhone: snap.customerPhone,
+            }}
+            onPrint={() => setBillPrintUrl(`C:/Program Files/Git/pos2/invoice/${snap.id}`)}
+            onView={() => setActiveInvoiceId(snap.id)}
+            onWhatsApp={(phone) => sendWhatsAppForSnapshot(snap, phone)}
+            onNewSale={() => setSaleCompletedPrompt(null)}
+          />
+        );
+      })()}
+      {billPrintUrl && <PrintSettingsModal url={billPrintUrl} onClose={() => setBillPrintUrl(null)} />}
 
       {/* Invoice Modal */}
       {activeInvoiceId && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[300] flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200">
           <div className="bg-[var(--brand-bg)] rounded-2xl shadow-2xl w-full max-w-4xl h-[90vh] sm:h-[85vh] flex flex-col overflow-hidden transform scale-100 animate-in zoom-in-95 duration-200">
             <div className="px-4 py-3 flex justify-between items-center bg-white border-b border-black/10 shrink-0">
               <h3 className="font-bold text-sm uppercase tracking-wider flex items-center gap-2 text-[#000000] truncate">
@@ -4024,7 +3927,7 @@ export default function POS2Billing({ role, userName, shop: initialShop }: Termi
                   onClick={() => {
                     const id = activeInvoiceId;
                     if (!id) return;
-                    window.open(`/pos2/invoice/${id}?print=true`, "_blank");
+                    setBillPrintUrl(`/pos2/invoice/${id}`);
                   }}
                   className="flex items-center gap-1.5 px-3 h-8 bg-[var(--brand-primary)] text-[var(--brand-on-primary)] hover:bg-[var(--brand-primary-dark)] rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer shadow-sm"
                   title="Print / Save PDF"

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CheckCircle2, Clock, Loader2, MessageCircle, Plus, Printer, X } from "lucide-react";
-import { balanceDue, describePayment, round2, type AdvanceItem, type AdvanceOrder } from "@/lib/payments";
+import { balanceDue, cgstSgst, describePayment, round2, type AdvanceItem, type AdvanceOrder } from "@/lib/payments";
 import PaymentPicker, { initialPayState, payStateError, splitParts, type PayState } from "./payment-picker";
 import { PrintSettingsModal, fmtDate, inr, shareOnWhatsApp, type AdvanceActions, type AdvanceBranch } from "./shared";
 
@@ -122,8 +122,8 @@ export default function CreateAdvanceModal({
                 )}
                 {cart.isGst && (
                   <>
-                    <Row k={`CGST (${round2(cart.gstPercentage / 2)}%)`} v={inr(cart.gstAmount / 2)} />
-                    <Row k={`SGST (${round2(cart.gstPercentage / 2)}%)`} v={inr(cart.gstAmount / 2)} />
+                    <Row k={`CGST (${round2(cart.gstPercentage / 2)}%)`} v={inr(cgstSgst(cart.gstPercentage, cart.gstAmount).cgst)} />
+                    <Row k={`SGST (${round2(cart.gstPercentage / 2)}%)`} v={inr(cgstSgst(cart.gstPercentage, cart.gstAmount).sgst)} />
                   </>
                 )}
                 {cart.deliveryFee > 0 && <Row k="Delivery" v={inr(cart.deliveryFee)} />}

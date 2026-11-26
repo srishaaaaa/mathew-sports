@@ -450,8 +450,8 @@ function Totals({ o }: { o: AdvanceOrder }) {
       )}
       {o.is_gst && (
         <>
-          <Line k={`CGST (${g.rate}%)`} v={inr(g.amount)} />
-          <Line k={`SGST (${g.rate}%)`} v={inr(g.amount)} />
+          <Line k={`CGST (${g.rate}%)`} v={inr(g.cgst)} />
+          <Line k={`SGST (${g.rate}%)`} v={inr(g.sgst)} />
         </>
       )}
       {o.delivery_fee > 0 && <Line k="Delivery" v={inr(o.delivery_fee)} />}

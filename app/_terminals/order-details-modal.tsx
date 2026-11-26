@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { describePayment, type PaymentMode } from "@/lib/payments";
+import { cgstSgst, describePayment, type PaymentMode } from "@/lib/payments";
 
 export type DetailsOrder = {
   id: string;
@@ -85,8 +85,8 @@ export default function OrderDetailsModal({ order: o, onClose }: { order: Detail
             )}
             {gstLine && (
               <>
-                <Row k={`CGST (${gstRate / 2}%)`} v={inr(gstAmount / 2)} />
-                <Row k={`SGST (${gstRate / 2}%)`} v={inr(gstAmount / 2)} />
+                <Row k={`CGST (${gstRate / 2}%)`} v={inr(cgstSgst(gstRate, gstAmount).cgst)} />
+                <Row k={`SGST (${gstRate / 2}%)`} v={inr(cgstSgst(gstRate, gstAmount).sgst)} />
               </>
             )}
             {o.deliveryFee > 0 && <Row k="Delivery fee" v={inr(o.deliveryFee)} />}

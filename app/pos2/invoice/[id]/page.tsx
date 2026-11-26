@@ -1,13 +1,15 @@
 import { getOrder } from "@/lib/db-pos2";
 import { notFound } from "next/navigation";
 import { MapPin, Phone, Mail, Store, AtSign } from "lucide-react";
-import InvoiceActions from "./invoice-actions";
+import ReceiptToolbar from "@/app/_receipts/receipt-toolbar";
+import InvoiceThermal from "@/app/_receipts/invoice-thermal";
+import { parseFormat } from "@/app/_receipts/advance-receipt";
 import type { Metadata } from "next";
 import { BRANCH } from "@/lib/branches/pos2";
 import { resolveTheme, themeCss } from "@/lib/branches/types";
 import { getThemeId } from "@/lib/settings";
 import { getShopProfile } from "@/lib/shop";
-import { describePayment } from "@/lib/payments";
+import { cgstSgst, describePayment } from "@/lib/payments";
 
 export async function generateMetadata({
   params,
@@ -22,10 +24,13 @@ export async function generateMetadata({
 
 export default async function InvoicePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ format?: string }>;
 }) {
-  const { id } = await params;
+  const [{ id }, { format }] = await Promise.all([params, searchParams]);
+  const fmt = parseFormat(format);
   const [order, savedThemeId, shop] = await Promise.all([getOrder(id), getThemeId("pos2"), getShopProfile("pos2")]);
   const theme = resolveTheme(BRANCH, savedThemeId);
 
@@ -33,12 +38,23 @@ export default async function InvoicePage({
     notFound();
   }
 
+  // 58 / 80 mm thermal roll
+  if (fmt === "thermal58" || fmt === "thermal80") {
+    return (
+      <>
+        <style>{themeCss(theme)}</style>
+        <InvoiceThermal order={order} shop={shop} format={fmt} />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[var(--brand-bg)] text-[#000000] font-sans py-12 px-4 print:p-0 print:bg-white flex flex-col items-center">
       <style>{`
         @media print {
           @page {
-            margin: 10mm;
+            size: ${fmt === "a5" ? "A5" : "A4"};
+            margin: ${fmt === "a5" ? "6mm" : "10mm"};
           }
           body {
             background-color: white !important;
@@ -50,7 +66,7 @@ export default async function InvoicePage({
       `}</style>
 
       {/* Top Navigation / Action Bar (Hidden when printing) */}
-      <InvoiceActions />
+      <ReceiptToolbar format={fmt} />
 
       {/* This branch's saved theme (Settings → Theme). */}
       <style>{themeCss(theme)}</style>
@@ -59,12 +75,9 @@ export default async function InvoicePage({
       <div className="w-full max-w-3xl bg-white border border-[var(--brand-border)] rounded-2xl shadow-xl print:shadow-none print:border-none print:rounded-none overflow-hidden">
         {/* Header Section */}
         <div className="bg-[var(--brand-surface)] border-b border-[var(--brand-border)] p-8 sm:p-12 print:p-6 flex flex-col items-center text-center">
-          <div
-            className="h-24 w-full max-w-[280px] rounded-2xl overflow-hidden flex items-center justify-center mb-4 print:[-webkit-print-color-adjust:exact] print:[print-color-adjust:exact]"
-            style={{ backgroundColor: shop.logoBackground }}
-          >
+          <div className="h-24 w-full max-w-[300px] flex items-center justify-center mb-4">
             <img
-              src={shop.logo}
+              src={shop.logoOnLight}
               alt={`${shop.shopName} Logo`}
               className="max-w-full max-h-full object-contain"
             />
@@ -289,14 +302,14 @@ export default async function InvoicePage({
                   {gstItem && (() => {
                     // Shown as CGST + SGST, half each.
                     const rate = parseFloat(gstItem.snapshot_name.replace(/[^0-9.]/g, "")) || 0;
-                    const half = (gstItem.snapshot_price * gstItem.quantity) / 2;
+                    const split = cgstSgst(rate, gstItem.snapshot_price * gstItem.quantity);
                     return (["CGST", "SGST"] as const).map((k) => (
                       <div key={k} className="flex justify-between items-center text-sm">
                         <span className="text-[var(--brand-text-muted)] font-bold uppercase tracking-wider">
                           {k} @ {rate / 2}%
                         </span>
                         <span className="font-bold text-[#000000]">
-                          ₹{half.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          ₹{(k === "CGST" ? split.cgst : split.sgst).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
                     ));

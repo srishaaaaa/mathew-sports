@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import { Check, Copy, Printer } from "lucide-react";
 import type { ReceiptFormat } from "./advance-receipt";
+import { PrintSettingsModal } from "@/app/_terminals/advance/shared";
 
 const LABEL: Record<ReceiptFormat, string> = { a4: "A4", a5: "A5", thermal80: "Thermal 80 mm", thermal58: "Thermal 58 mm" };
 
 /** Format switcher, copy link and print — hidden when printing. Auto-prints with ?print=1. */
 export default function ReceiptToolbar({ format }: { format: ReceiptFormat }) {
   const [copied, setCopied] = useState(false);
+  const [asking, setAsking] = useState(false);
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("print") === "1") {
@@ -49,10 +51,11 @@ export default function ReceiptToolbar({ format }: { format: ReceiptFormat }) {
         <button onClick={copy} className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white border border-black/10 text-xs font-bold shadow-sm cursor-pointer">
           {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />} {copied ? "Copied" : "Copy link"}
         </button>
-        <button onClick={() => window.print()} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--brand-primary)] text-[var(--brand-on-primary)] text-xs font-bold shadow-sm cursor-pointer">
+        <button onClick={() => setAsking(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--brand-primary)] text-[var(--brand-on-primary)] text-xs font-bold shadow-sm cursor-pointer">
           <Printer className="w-4 h-4" /> Print / Save PDF
         </button>
       </div>
+      {asking && <PrintSettingsModal url={window.location.pathname} sameTab onClose={() => setAsking(false)} />}
     </div>
   );
 }
