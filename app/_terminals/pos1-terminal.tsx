@@ -2738,11 +2738,25 @@ export default function POSBilling({ role, userName, shop: initialShop }: Termin
                                 {order.customerPhone || "-"}
                               </td>
                               <td className="p-4">
-                                <span
-                                  className={`px-2 py-0.5 rounded text-[9px] font-bold tracking-widest border ${order.source === "ONLINE" ? "border-[#1A1A1A] text-[#1A1A1A] bg-[#1A1A1A]/10" : "border-[var(--brand-primary)] text-[var(--brand-primary)] bg-[var(--brand-primary)]/10"}`}
-                                >
-                                  {order.source}
-                                </span>
+                                <div className="flex flex-col items-start gap-1">
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[9px] font-bold tracking-widest border ${order.source === "ONLINE" ? "border-[#1A1A1A] text-[#1A1A1A] bg-[#1A1A1A]/10" : "border-[var(--brand-primary)] text-[var(--brand-primary)] bg-[var(--brand-primary)]/10"}`}
+                                  >
+                                    {order.source}
+                                  </span>
+                                  {/* Tax invoice vs plain bill, and bills that completed an advance order */}
+                                  <span className="px-2 py-0.5 rounded text-[9px] font-bold tracking-widest border border-black/15 text-black/70 bg-black/[0.03]">
+                                    {isGstBill(order) ? "GST" : "NON-GST"}
+                                  </span>
+                                  {order.advanceOrderId && (
+                                    <span
+                                      title={`Completed advance order ${order.advanceOrderId}`}
+                                      className="px-2 py-0.5 rounded text-[9px] font-bold tracking-widest border border-amber-400 text-amber-800 bg-amber-50"
+                                    >
+                                      ADVANCE
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="p-4 text-sm font-black text-[var(--brand-primary)]">
                                 ₹{order.grandTotal.toLocaleString()}

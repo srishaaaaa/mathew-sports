@@ -77,8 +77,12 @@ export default async function InvoicePage({
               {shop.ownerName}
             </p>
           )}
-          <p className="text-xs text-[var(--brand-text-muted)] font-bold tracking-wider mt-1 mb-4">
-            INVOICE: {order.id}
+          <p className="mt-2 text-sm font-black tracking-[0.2em] text-[var(--brand-primary-dark)] uppercase">
+            {order.order_items.some((i) => i.snapshot_name.startsWith("GST (")) ? "Tax Invoice" : "Invoice"}
+          </p>
+          <p className="text-xs text-[var(--brand-text-muted)] font-bold tracking-wider mt-0.5 mb-4">
+            NO: {order.id}
+            {order.advance_order_id && <> · ADVANCE ORDER {order.advance_order_id}</>}
           </p>
 
           <div className="flex flex-col items-center gap-2 text-sm text-[var(--brand-text-soft)] font-semibold">
@@ -282,21 +286,21 @@ export default async function InvoicePage({
                     </div>
                   )}
 
-                  {gstItem && (
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-[var(--brand-text-muted)] font-bold uppercase tracking-wider">
-                        {gstItem.snapshot_name}
-                      </span>
-                      <span className="font-bold text-[#000000]">
-                        ₹
-                        {(
-                          gstItem.snapshot_price * gstItem.quantity
-                        ).toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                        })}
-                      </span>
-                    </div>
-                  )}
+                  {gstItem && (() => {
+                    // Shown as CGST + SGST, half each.
+                    const rate = parseFloat(gstItem.snapshot_name.replace(/[^0-9.]/g, "")) || 0;
+                    const half = (gstItem.snapshot_price * gstItem.quantity) / 2;
+                    return (["CGST", "SGST"] as const).map((k) => (
+                      <div key={k} className="flex justify-between items-center text-sm">
+                        <span className="text-[var(--brand-text-muted)] font-bold uppercase tracking-wider">
+                          {k} @ {rate / 2}%
+                        </span>
+                        <span className="font-bold text-[#000000]">
+                          ₹{half.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    ));
+                  })()}
 
                   {order.delivery_fee > 0 && (
                     <div className="flex justify-between items-center text-sm">
